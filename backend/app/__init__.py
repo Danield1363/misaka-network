@@ -5,6 +5,7 @@ from typing import AsyncGenerator
 
 from app.core.config import get_settings
 from app.core.logging import setup_logging
+from app.api.root import router as root_router
 from app.api import api_router
 
 
@@ -31,6 +32,7 @@ def create_app() -> FastAPI:
         lifespan=lifespan
     )
     
+    app.include_router(root_router)
     app.include_router(api_router, prefix=settings.API_PREFIX)
     
     return app

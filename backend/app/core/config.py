@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     
     PROJECT_NAME: str = "Misaka Core"
     VERSION: str = "0.1 Genesis"
+    ENVIRONMENT: str = "development"
     DEBUG: bool = False
     
     API_PREFIX: str = "/api"

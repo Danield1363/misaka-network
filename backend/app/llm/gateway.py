@@ -25,7 +25,10 @@ class LLMGateway:
             raise ProviderNotFoundError(f"Provider '{name}' not found")
         
         if not provider.is_available():
-            raise ProviderUnavailableError(f"Provider '{name}' is not available")
+            raise ProviderUnavailableError(
+                f"Provider '{name}' is configured but not available. "
+                f"Check if the API key is set correctly."
+            )
         
         return provider
 
