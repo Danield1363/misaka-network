@@ -290,6 +290,23 @@ function setupIPC() {
         return { success: false, error: 'Invalid URL. Must start with http:// or https://' };
     });
 
+    ipcMain.handle('search-web', (event, { query, provider }) => {
+        if (!query || typeof query !== 'string') {
+            return { success: false, error: 'Query is required' };
+        }
+        const { quote_plus } = require('querystring');
+        const encoded = quote_plus(query);
+        const urls = {
+            google: `https://www.google.com/search?q=${encoded}`,
+            youtube: `https://www.youtube.com/results?search_query=${encoded}`,
+            github: `https://github.com/search?q=${encoded}&type=repositories`,
+            reddit: `https://www.reddit.com/search/?q=${encoded}`,
+        };
+        const url = urls[provider] || urls.google;
+        shell.openExternal(url);
+        return { success: true, url, provider };
+    });
+
     ipcMain.handle('get-system-status', () => {
         return {
             platform: process.platform,

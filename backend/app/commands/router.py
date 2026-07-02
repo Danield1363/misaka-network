@@ -12,20 +12,25 @@ from app.commands.parser import (
 )
 from app.commands.intents import Intent
 from app.tools.executor import ToolExecutor
+from app.web_actions.engine import WebActionEngine
 
 logger = logging.getLogger(__name__)
 
+web_action_engine = WebActionEngine()
+
 
 def build_client_action(intent_name: str, parameters: dict, message: str) -> dict[str, Any] | None:
+    web_result = web_action_engine.process(message)
+    if web_result:
+        return {
+            "type": "open_url",
+            "target": web_result.target,
+            "url": web_result.url,
+            "source": "web_action_engine",
+        }
+
     if intent_name in ("open_youtube", "open_url_site"):
         url = parameters.get("url") or extract_url(message) or "https://www.youtube.com"
-        return {"type": "open_url", "target": "desktop", "url": url}
-
-    if intent_name == "search_youtube":
-        url = extract_youtube_search(message)
-        if not url:
-            query = extract_search_query(message)
-            url = f"https://www.youtube.com/results?search_query={query.replace(' ', '+')}" if query else "https://www.youtube.com"
         return {"type": "open_url", "target": "desktop", "url": url}
 
     if intent_name == "open_app":
@@ -61,6 +66,24 @@ class CommandRouter:
         message: str,
         context: dict[str, Any] | None = None,
     ) -> dict[str, Any] | None:
+        web_result = web_action_engine.process(message)
+        if web_result:
+            return {
+                "type": "command_executed",
+                "intent": "web_action",
+                "tool_name": "desktop.open_url",
+                "success": True,
+                "data": {"url": web_result.url},
+                "response_message": web_result.response_message,
+                "client_action": {
+                    "type": "open_url",
+                    "target": web_result.target,
+                    "url": web_result.url,
+                    "source": "web_action_engine",
+                },
+                "metadata": {},
+            }
+
         intent = detect_intent(message)
 
         if intent is None:

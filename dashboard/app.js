@@ -325,6 +325,7 @@ function handleClientAction(action) {
                 showToast('Popup bloqueado. Permita popups para este site.', 'warning');
             }
         }
+        showToast('Ação executada.', 'success');
         return;
     }
 
@@ -334,6 +335,27 @@ function handleClientAction(action) {
         } else {
             showToast('Para abrir apps do PC, use o app desktop da Misaka.', 'info');
         }
+        return;
+    }
+
+    if (action.type === 'search_web') {
+        if (isDesktop && window.misakaDesktop.searchWeb) {
+            window.misakaDesktop.searchWeb(action.query, action.provider);
+        } else {
+            const provider = action.provider || 'google';
+            const urls = {
+                google: `https://www.google.com/search?q=${encodeURIComponent(action.query)}`,
+                youtube: `https://www.youtube.com/results?search_query=${encodeURIComponent(action.query)}`,
+                github: `https://github.com/search?q=${encodeURIComponent(action.query)}&type=repositories`,
+                reddit: `https://www.reddit.com/search/?q=${encodeURIComponent(action.query)}`,
+            };
+            try {
+                window.open(urls[provider] || urls.google, '_blank');
+            } catch (e) {
+                showToast('Popup bloqueado. Permita popups para este site.', 'warning');
+            }
+        }
+        showToast('Pesquisa aberta.', 'success');
         return;
     }
 

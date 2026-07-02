@@ -11,6 +11,8 @@ contextBridge.exposeInMainWorld('misakaDesktop', {
 
     openUrl: (url) => ipcRenderer.invoke('open-url', { url }),
 
+    searchWeb: (query, provider) => ipcRenderer.invoke('search-web', { query, provider }),
+
     getSystemStatus: () => ipcRenderer.invoke('get-system-status'),
 
     setAlwaysOnTop: (enabled) => ipcRenderer.invoke('set-always-on-top', { enabled }),
