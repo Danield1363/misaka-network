@@ -7,9 +7,11 @@ let tray;
 let isQuitting = false;
 let notifiedAlertIds = new Set();
 
+const DASHBOARD_DIR = path.join(__dirname, '..', 'dashboard');
+
 const CONFIG = {
     API_BASE_URL: process.env.MISAKA_API_BASE_URL || 'https://p01--misaka-network--nf5wq7twf8xg.code.run/api',
-    DASHBOARD_URL: process.env.MISAKA_DASHBOARD_URL || 'https://misaka-dashboard.pages.dev',
+    DASHBOARD_URL: process.env.MISAKA_DASHBOARD_URL || '',
     START_MINIMIZED: process.env.START_MINIMIZED === 'true',
     ALWAYS_ON_TOP_DEFAULT: process.env.ALWAYS_ON_TOP_DEFAULT === 'true',
     TRANSPARENT_MODE_DEFAULT: process.env.TRANSPARENT_MODE_DEFAULT === 'true'
@@ -38,7 +40,91 @@ function saveNotifiedIds() {
     }
 }
 
+function getDashboardUrl() {
+    if (CONFIG.DASHBOARD_URL && !CONFIG.DASHBOARD_URL.includes('/docs')) {
+        return CONFIG.DASHBOARD_URL;
+    }
+
+    const localIndex = path.join(DASHBOARD_DIR, 'index.html');
+    if (fs.existsSync(localIndex)) {
+        return `file://${localIndex}`;
+    }
+
+    return 'https://misaka-dashboard.pages.dev';
+}
+
+function isValidDashboardUrl(url) {
+    if (url.includes('/docs') || url.includes('/redoc')) {
+        return false;
+    }
+    return true;
+}
+
+function showErrorWindow(message) {
+    const errorWindow = new BrowserWindow({
+        width: 500,
+        height: 300,
+        title: 'Misaka - Configuration Error',
+        webPreferences: {
+            nodeIntegration: false,
+            contextIsolation: true
+        }
+    });
+
+    errorWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <style>
+                body {
+                    font-family: 'Segoe UI', system-ui, sans-serif;
+                    background: #081018;
+                    color: #eaf6ff;
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                    height: 100vh;
+                    margin: 0;
+                    padding: 2rem;
+                    text-align: center;
+                }
+                .error-box {
+                    background: rgba(18, 30, 48, 0.72);
+                    border: 1px solid rgba(255, 107, 129, 0.3);
+                    border-radius: 12px;
+                    padding: 2rem;
+                    max-width: 400px;
+                }
+                h1 { color: #68d5ff; margin-bottom: 1rem; }
+                p { color: #8faec5; line-height: 1.6; }
+                code { 
+                    background: rgba(104, 213, 255, 0.1); 
+                    padding: 0.2rem 0.5rem; 
+                    border-radius: 4px;
+                    color: #68d5ff;
+                }
+            </style>
+        </head>
+        <body>
+            <div class="error-box">
+                <h1>Misaka Desktop</h1>
+                <p>${message}</p>
+                <p>Configure a variável de ambiente:</p>
+                <code>MISAKA_DASHBOARD_URL</code>
+            </div>
+        </body>
+        </html>
+    `)}`);
+}
+
 function createWindow() {
+    const dashboardUrl = getDashboardUrl();
+
+    if (!isValidDashboardUrl(dashboardUrl)) {
+        showErrorWindow('Dashboard URL inválida. Configure MISAKA_DASHBOARD_URL para a interface da Misaka.');
+        return;
+    }
+
     mainWindow = new BrowserWindow({
         width: 1200,
         height: 800,
@@ -54,7 +140,15 @@ function createWindow() {
         frame: !CONFIG.TRANSPARENT_MODE_DEFAULT
     });
 
-    mainWindow.loadURL(CONFIG.DASHBOARD_URL);
+    mainWindow.loadURL(dashboardUrl);
+
+    mainWindow.webContents.on('did-finish-load', () => {
+        mainWindow.webContents.executeJavaScript(`
+            if (typeof MISAKA_CONFIG !== 'undefined') {
+                MISAKA_CONFIG.API_BASE_URL = '${CONFIG.API_BASE_URL}';
+            }
+        `).catch(() => {});
+    });
 
     mainWindow.on('close', (event) => {
         if (!isQuitting) {
