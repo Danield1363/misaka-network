@@ -25,13 +25,22 @@ class GeminiProvider:
 
     async def generate(self, message: str, context: dict[str, Any]) -> str:
         logger.info(f"GeminiProvider generating response for: {message[:50]}...")
-        
+
         try:
             client = await self._get_client()
             personality = context.get("personality", "")
-            
-            prompt = f"{personality}\n\nUsuário: {message}\nMisaka:"
-            
+            memory_context = context.get("memory_context", "")
+
+            prompt_parts = []
+            if personality:
+                prompt_parts.append(personality)
+            if memory_context:
+                prompt_parts.append(memory_context)
+            prompt_parts.append(f"Usuário: {message}")
+            prompt_parts.append("Misaka:")
+
+            prompt = "\n\n".join(prompt_parts)
+
             response = client.generate_content(prompt)
             return response.text
         except Exception as e:

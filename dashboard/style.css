@@ -647,6 +647,17 @@ body {
     color: var(--color-muted);
 }
 
+.mock-warning {
+    background: rgba(255, 209, 102, 0.1);
+    border: 1px solid rgba(255, 209, 102, 0.3);
+    border-radius: 8px;
+    padding: 0.75rem 1rem;
+    margin-bottom: 1rem;
+    font-size: 0.85rem;
+    color: var(--color-warning);
+    text-align: center;
+}
+
 @media (max-width: 1024px) {
     .alerts-sidebar {
         display: none;
