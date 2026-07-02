@@ -299,7 +299,7 @@ function addMessage(text, type) {
 
     const contentDiv = document.createElement('div');
     contentDiv.className = 'message-content';
-    contentDiv.textContent = text;
+    contentDiv.textContent = type === 'assistant' ? cleanAssistantText(text) : text;
     bodyDiv.appendChild(contentDiv);
 
     messageDiv.appendChild(bodyDiv);
@@ -307,6 +307,21 @@ function addMessage(text, type) {
     chatMessages.scrollTop = chatMessages.scrollHeight;
 
     lastResponse = text;
+}
+
+function cleanAssistantText(text) {
+    if (!text) return '';
+    let cleaned = text;
+    cleaned = cleaned.replace(/\*\*(.+?)\*\*/g, '$1');
+    cleaned = cleaned.replace(/\*(.+?)\*/g, '$1');
+    cleaned = cleaned.replace(/__(.+?)__/g, '$1');
+    cleaned = cleaned.replace(/_(.+?)_/g, '$1');
+    cleaned = cleaned.replace(/`(.+?)`/g, '$1');
+    cleaned = cleaned.replace(/~~(.+?)~~/g, '$1');
+    cleaned = cleaned.replace(/#{1,6}\s*/g, '');
+    cleaned = cleaned.replace(/\n{3,}/g, '\n\n');
+    cleaned = cleaned.trim();
+    return cleaned;
 }
 
 // ==================== Client Action Handler ====================

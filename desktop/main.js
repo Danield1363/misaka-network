@@ -226,31 +226,54 @@ function findWindowsApp(name) {
 const WINDOWS_APP_LAUNCHERS = {
     browser: () => shell.openExternal('https://www.google.com'),
     chrome: () => {
-        const found = findWindowsApp('Google\\Chrome\\Application\\chrome.exe');
-        if (found) spawn(found, [], { detached: true, stdio: 'ignore' }).unref();
-        else shell.openExternal('https://www.google.com');
-    },
-    firefox: () => {
-        const found = findWindowsApp('Mozilla Firefox\\firefox.exe');
+        const localAppData = process.env.LOCALAPPDATA || '';
+        const programFiles = process.env['PROGRAMFILES'] || 'C:\\Program Files';
+        const programFilesX86 = process.env['PROGRAMFILES(X86)'] || 'C:\\Program Files (x86)';
+        const paths = [
+            path.join(localAppData, 'Google', 'Chrome', 'Application', 'chrome.exe'),
+            path.join(programFiles, 'Google', 'Chrome', 'Application', 'chrome.exe'),
+            path.join(programFilesX86, 'Google', 'Chrome', 'Application', 'chrome.exe'),
+        ];
+        const found = paths.find(p => fs.existsSync(p));
         if (found) spawn(found, [], { detached: true, stdio: 'ignore' }).unref();
         else shell.openExternal('https://www.google.com');
     },
     edge: () => {
-        const found = findWindowsApp('Microsoft\\Edge\\Application\\msedge.exe');
+        const localAppData = process.env.LOCALAPPDATA || '';
+        const programFiles = process.env['PROGRAMFILES'] || 'C:\\Program Files';
+        const paths = [
+            path.join(localAppData, 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
+            path.join(programFiles, 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
+        ];
+        const found = paths.find(p => fs.existsSync(p));
         if (found) spawn(found, [], { detached: true, stdio: 'ignore' }).unref();
         else shell.openExternal('https://www.google.com');
     },
     vscode: () => {
-        const found = findWindowsApp('Microsoft VS Code');
+        const localAppData = process.env.LOCALAPPDATA || '';
+        const programFiles = process.env['PROGRAMFILES'] || 'C:\\Program Files';
+        const paths = [
+            path.join(localAppData, 'Programs', 'Microsoft VS Code', 'Code.exe'),
+            path.join(programFiles, 'Microsoft VS Code', 'Code.exe'),
+        ];
+        const found = paths.find(p => fs.existsSync(p));
         if (found) spawn(found, [], { detached: true, stdio: 'ignore' }).unref();
         else spawn('code', [], { detached: true, stdio: 'ignore' }).unref();
     },
-    explorer: () => spawn('explorer', [], { detached: true, stdio: 'ignore' }).unref(),
+    explorer: () => spawn('explorer.exe', [], { detached: true, stdio: 'ignore' }).unref(),
     discord: () => {
-        const found = findWindowsApp('Discord');
-        if (found) spawn(found, [], { detached: true, stdio: 'ignore' }).unref();
+        const localAppData = process.env.LOCALAPPDATA || '';
+        const paths = [
+            path.join(localAppData, 'Discord', 'Update.exe'),
+            path.join(localAppData, 'DiscordCanary', 'Update.exe'),
+            path.join(localAppData, 'DiscordPTB', 'Update.exe'),
+        ];
+        const found = paths.find(p => fs.existsSync(p));
+        if (found) spawn(found, ['--processStart', 'Discord.exe'], { detached: true, stdio: 'ignore' }).unref();
         else shell.openExternal('https://discord.com/app');
     },
+    notepad: () => spawn('notepad.exe', [], { detached: true, stdio: 'ignore' }).unref(),
+    calculator: () => spawn('calc.exe', [], { detached: true, stdio: 'ignore' }).unref(),
     youtube: () => shell.openExternal('https://www.youtube.com'),
     spotify: () => shell.openExternal('https://open.spotify.com'),
 };
