@@ -17,6 +17,10 @@ class Settings(BaseSettings):
     API_PREFIX: str = "/api"
     
     LOG_LEVEL: str = "INFO"
+    
+    LLM_PROVIDER: str = "mock"
+    GEMINI_API_KEY: str = ""
+    GEMINI_MODEL: str = "gemini-pro"
 
 
 @lru_cache()
