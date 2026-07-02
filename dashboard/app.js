@@ -1,5 +1,6 @@
 const API_BASE = MISAKA_CONFIG.API_BASE_URL;
 
+// DOM Elements
 const chatMessages = document.getElementById('chatMessages');
 const messageInput = document.getElementById('messageInput');
 const btnSend = document.getElementById('btnSend');
@@ -10,18 +11,121 @@ const btnCopyLast = document.getElementById('btnCopyLast');
 const btnSpeakLast = document.getElementById('btnSpeakLast');
 const typingIndicator = document.getElementById('typingIndicator');
 const coreVisualizer = document.getElementById('coreVisualizer');
+const voiceSelect = document.getElementById('voiceSelect');
+const voiceRateSlider = document.getElementById('voiceRate');
+const voicePitchSlider = document.getElementById('voicePitch');
+const rateValue = document.getElementById('rateValue');
+const pitchValue = document.getElementById('pitchValue');
+const voiceEnabledToggle = document.getElementById('voiceEnabledToggle');
+const autoSpeakToggle = document.getElementById('autoSpeakToggle');
+const btnTestVoice = document.getElementById('btnTestVoice');
 
+// State
 let conversationId = null;
 let lastResponse = '';
-let voiceEnabled = localStorage.getItem('misaka_voice_enabled') === 'true';
+let voiceEnabled = localStorage.getItem('misaka_voice_enabled') !== 'false';
 let hudMode = localStorage.getItem('misaka_hud_mode') === 'true';
 let autoSpeak = localStorage.getItem('misaka_auto_speak') === 'true';
-let selectedVoice = localStorage.getItem('misaka_voice_name') || '';
+let selectedVoiceName = localStorage.getItem('misaka_voice_name') || '';
 let voiceRate = parseFloat(localStorage.getItem('misaka_voice_rate') || '1.0');
 let voicePitch = parseFloat(localStorage.getItem('misaka_voice_pitch') || '1.1');
 let pendingAlertIds = JSON.parse(localStorage.getItem('misaka_pending_alerts') || '[]');
 let currentProvider = 'mock';
+let currentModel = 'mock';
 
+// Voice Functions
+function initVoiceControls() {
+    voiceRateSlider.value = voiceRate;
+    voicePitchSlider.value = voicePitch;
+    rateValue.textContent = voiceRate;
+    pitchValue.textContent = voicePitch;
+    voiceEnabledToggle.checked = voiceEnabled;
+    autoSpeakToggle.checked = autoSpeak;
+
+    if ('speechSynthesis' in window) {
+        window.speechSynthesis.onvoiceschanged = populateVoiceSelect;
+        populateVoiceSelect();
+    }
+}
+
+function populateVoiceSelect() {
+    const voices = window.speechSynthesis.getVoices();
+    voiceSelect.innerHTML = '<option value="">Default (pt-BR)</option>';
+
+    const ptBrVoices = voices.filter(v => v.lang.includes('pt-BR'));
+    const ptVoices = voices.filter(v => v.lang.includes('pt') && !v.lang.includes('pt-BR'));
+
+    if (ptBrVoices.length > 0) {
+        const optgroup = document.createElement('optgroup');
+        optgroup.label = 'Portuguese (Brazil)';
+        ptBrVoices.forEach(voice => {
+            const option = document.createElement('option');
+            option.value = voice.name;
+            option.textContent = `${voice.name}${voice.localService ? ' (local)' : ''}`;
+            if (voice.name === selectedVoiceName) option.selected = true;
+            optgroup.appendChild(option);
+        });
+        voiceSelect.appendChild(optgroup);
+    }
+
+    if (ptVoices.length > 0) {
+        const optgroup = document.createElement('optgroup');
+        optgroup.label = 'Portuguese';
+        ptVoices.forEach(voice => {
+            const option = document.createElement('option');
+            option.value = voice.name;
+            option.textContent = `${voice.name}${voice.localService ? ' (local)' : ''}`;
+            if (voice.name === selectedVoiceName) option.selected = true;
+            optgroup.appendChild(option);
+        });
+        voiceSelect.appendChild(optgroup);
+    }
+}
+
+function getSelectedVoice() {
+    const voices = window.speechSynthesis.getVoices();
+    if (selectedVoiceName) {
+        const found = voices.find(v => v.name === selectedVoiceName);
+        if (found) return found;
+    }
+    const ptBrFemale = voices.find(v =>
+        v.lang.includes('pt-BR') &&
+        (v.name.toLowerCase().includes('female') || v.name.toLowerCase().includes('feminina'))
+    );
+    if (ptBrFemale) return ptBrFemale;
+    const ptBr = voices.find(v => v.lang.includes('pt-BR'));
+    if (ptBr) return ptBr;
+    const female = voices.find(v =>
+        v.name.toLowerCase().includes('female') ||
+        v.name.toLowerCase().includes('feminina')
+    );
+    return female || voices[0];
+}
+
+function speak(text) {
+    if (!('speechSynthesis' in window)) return;
+
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = 'pt-BR';
+    utterance.rate = voiceRate;
+    utterance.pitch = voicePitch;
+
+    const voice = getSelectedVoice();
+    if (voice) {
+        utterance.voice = voice;
+    }
+
+    utterance.onstart = () => setCoreState('speaking');
+    utterance.onend = () => setCoreState(null);
+    window.speechSynthesis.speak(utterance);
+}
+
+function testVoice() {
+    speak('Olá, eu sou a Misaka. Esta é minha voz.');
+}
+
+// UI Functions
 function updateVoiceButton() {
     btnVoice.style.color = voiceEnabled ? 'var(--color-primary)' : 'var(--color-muted)';
 }
@@ -31,16 +135,22 @@ function updateHUDButton() {
     document.body.classList.toggle('hud-mode', hudMode);
 }
 
-function showMockWarning(show) {
-    let warning = document.getElementById('mockWarning');
-    if (show && !warning) {
-        warning = document.createElement('div');
-        warning.id = 'mockWarning';
+function showProviderStatus(provider, model, geminiConfigured) {
+    const existing = document.querySelector('.mock-warning, .gemini-active');
+    if (existing) existing.remove();
+
+    const chatSection = document.querySelector('.chat-section');
+
+    if (provider === 'mock') {
+        const warning = document.createElement('div');
         warning.className = 'mock-warning';
-        warning.textContent = 'Misaka está em modo simulação. Configure Gemini para respostas inteligentes.';
-        document.querySelector('.chat-section').prepend(warning);
-    } else if (!show && warning) {
-        warning.remove();
+        warning.textContent = 'Misaka está em modo simulação. Configure GEMINI_API_KEY para respostas inteligentes.';
+        chatSection.prepend(warning);
+    } else if (provider === 'gemini') {
+        const active = document.createElement('div');
+        active.className = 'gemini-active';
+        active.textContent = `Gemini ativo — ${model}`;
+        chatSection.prepend(active);
     }
 }
 
@@ -50,8 +160,11 @@ async function loadStatus() {
         const data = await response.json();
 
         currentProvider = data.llm_provider;
+        currentModel = data.llm_model;
+
         document.getElementById('version').textContent = `v${data.version}`;
         document.getElementById('llmProvider').textContent = data.llm_provider;
+        document.getElementById('llmModel').textContent = data.llm_model;
         document.getElementById('providerBadge').textContent = data.llm_provider;
         document.getElementById('memoryStatus').textContent = data.memory_enabled ? 'Enabled' : 'Disabled';
         document.getElementById('calendarStatus').textContent = data.calendar_enabled ? 'Enabled' : 'Disabled';
@@ -66,7 +179,7 @@ async function loadStatus() {
 
         document.getElementById('llmStatus').textContent = data.llm_provider === 'mock' ? 'Mock' : 'Active';
 
-        showMockWarning(data.llm_provider === 'mock');
+        showProviderStatus(data.llm_provider, data.llm_model, data.gemini_configured);
     } catch (error) {
         console.error('Failed to load status:', error);
     }
@@ -103,6 +216,7 @@ function addMessage(text, type) {
     lastResponse = text;
 }
 
+// Chat Functions
 async function sendMessage() {
     const message = messageInput.value.trim();
     if (!message) return;
@@ -152,50 +266,13 @@ function clearChat() {
     addMessage('Conversa reiniciada. Como posso ajudar?', 'system');
 }
 
-function getSelectedVoice() {
-    const voices = window.speechSynthesis.getVoices();
-    if (selectedVoice) {
-        const found = voices.find(v => v.name === selectedVoice);
-        if (found) return found;
-    }
-    const ptBrFemale = voices.find(v => v.lang.includes('pt-BR') && v.name.toLowerCase().includes('female'));
-    if (ptBrFemale) return ptBrFemale;
-    const ptBr = voices.find(v => v.lang.includes('pt-BR'));
-    if (ptBr) return ptBr;
-    const female = voices.find(v => v.name.toLowerCase().includes('female'));
-    return female || voices[0];
-}
-
-function speak(text) {
-    if ('speechSynthesis' in window) {
-        window.speechSynthesis.cancel();
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.lang = 'pt-BR';
-        utterance.rate = voiceRate;
-        utterance.pitch = voicePitch;
-        const voice = getSelectedVoice();
-        if (voice) utterance.voice = voice;
-        utterance.onstart = () => setCoreState('speaking');
-        utterance.onend = () => setCoreState(null);
-        window.speechSynthesis.speak(utterance);
-    }
-}
-
 function copyToClipboard(text) {
     navigator.clipboard.writeText(text).catch(err => {
         console.error('Failed to copy:', err);
     });
 }
 
-function getAvailableVoices() {
-    const voices = window.speechSynthesis.getVoices();
-    return voices.filter(v => v.lang.includes('pt')).map(v => ({
-        name: v.name,
-        lang: v.lang,
-        local: v.localService
-    }));
-}
-
+// Alert Functions
 async function loadAlerts() {
     try {
         const response = await fetch(`${API_BASE}/notifications/alerts`);
@@ -247,6 +324,7 @@ async function loadAlerts() {
     }
 }
 
+// Event Listeners
 messageInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
@@ -265,6 +343,7 @@ btnClear.addEventListener('click', clearChat);
 btnVoice.addEventListener('click', () => {
     voiceEnabled = !voiceEnabled;
     localStorage.setItem('misaka_voice_enabled', voiceEnabled);
+    voiceEnabledToggle.checked = voiceEnabled;
     updateVoiceButton();
 });
 
@@ -282,39 +361,45 @@ btnSpeakLast.addEventListener('click', () => {
     if (lastResponse) speak(lastResponse);
 });
 
+// Voice Control Listeners
+voiceSelect.addEventListener('change', (e) => {
+    selectedVoiceName = e.target.value;
+    localStorage.setItem('misaka_voice_name', selectedVoiceName);
+});
+
+voiceRateSlider.addEventListener('input', (e) => {
+    voiceRate = parseFloat(e.target.value);
+    rateValue.textContent = voiceRate.toFixed(1);
+    localStorage.setItem('misaka_voice_rate', voiceRate);
+});
+
+voicePitchSlider.addEventListener('input', (e) => {
+    voicePitch = parseFloat(e.target.value);
+    pitchValue.textContent = voicePitch.toFixed(1);
+    localStorage.setItem('misaka_voice_pitch', voicePitch);
+});
+
+voiceEnabledToggle.addEventListener('change', (e) => {
+    voiceEnabled = e.target.checked;
+    localStorage.setItem('misaka_voice_enabled', voiceEnabled);
+    updateVoiceButton();
+});
+
+autoSpeakToggle.addEventListener('change', (e) => {
+    autoSpeak = e.target.checked;
+    localStorage.setItem('misaka_auto_speak', autoSpeak);
+});
+
+btnTestVoice.addEventListener('click', testVoice);
+
+// Initialize
 if ('Notification' in window && Notification.permission === 'default') {
     Notification.requestPermission();
 }
 
-if ('speechSynthesis' in window) {
-    window.speechSynthesis.onvoiceschanged = () => {
-        const voices = getAvailableVoices();
-        console.log('Available voices:', voices);
-    };
-}
-
-window.misakaVoice = {
-    getAvailableVoices,
-    setVoice: (name) => {
-        selectedVoice = name;
-        localStorage.setItem('misaka_voice_name', name);
-    },
-    setRate: (rate) => {
-        voiceRate = rate;
-        localStorage.setItem('misaka_voice_rate', rate);
-    },
-    setPitch: (pitch) => {
-        voicePitch = pitch;
-        localStorage.setItem('misaka_voice_pitch', pitch);
-    },
-    setAutoSpeak: (enabled) => {
-        autoSpeak = enabled;
-        localStorage.setItem('misaka_auto_speak', enabled);
-    }
-};
-
 loadStatus();
 loadAlerts();
+initVoiceControls();
 updateVoiceButton();
 updateHUDButton();
 messageInput.focus();

@@ -29,6 +29,8 @@ async def overview() -> dict[str, str | bool | int]:
     except Exception as e:
         logger.error(f"Failed to count alerts: {e}")
 
+    gemini_configured = bool(settings.GEMINI_API_KEY)
+
     return {
         "assistant": "Misaka",
         "status": "online",
@@ -36,6 +38,7 @@ async def overview() -> dict[str, str | bool | int]:
         "environment": settings.ENVIRONMENT,
         "llm_provider": settings.LLM_PROVIDER,
         "llm_model": settings.GEMINI_MODEL if settings.LLM_PROVIDER == "gemini" else "mock",
+        "gemini_configured": gemini_configured,
         "memory_enabled": memory_engine.enabled,
         "calendar_enabled": calendar_engine.enabled,
         "notifications_enabled": notification_engine.enabled,

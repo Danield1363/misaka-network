@@ -48,6 +48,10 @@
                             <span class="status-value" id="llmProvider">-</span>
                         </div>
                         <div class="status-item">
+                            <span class="status-label">Model</span>
+                            <span class="status-value" id="llmModel">-</span>
+                        </div>
+                        <div class="status-item">
                             <span class="status-label">Memory</span>
                             <span class="status-value" id="memoryStatus">-</span>
                         </div>
@@ -63,6 +67,37 @@
                             <span class="status-label">Notifications</span>
                             <span class="status-value" id="notificationsStatus">-</span>
                         </div>
+                    </div>
+                </div>
+
+                <div class="voice-panel" id="voicePanel">
+                    <h3>Voice Controls</h3>
+                    <div class="voice-controls">
+                        <label class="voice-label">
+                            <span>Voice</span>
+                            <select id="voiceSelect" class="voice-select">
+                                <option value="">Default</option>
+                            </select>
+                        </label>
+                        <label class="voice-label">
+                            <span>Rate: <span id="rateValue">1.0</span></span>
+                            <input type="range" id="voiceRate" min="0.5" max="2.0" step="0.1" value="1.0" class="voice-slider">
+                        </label>
+                        <label class="voice-label">
+                            <span>Pitch: <span id="pitchValue">1.1</span></span>
+                            <input type="range" id="voicePitch" min="0.5" max="2.0" step="0.1" value="1.1" class="voice-slider">
+                        </label>
+                        <div class="voice-toggles">
+                            <label class="toggle-label">
+                                <input type="checkbox" id="voiceEnabledToggle" checked>
+                                <span>Enabled</span>
+                            </label>
+                            <label class="toggle-label">
+                                <input type="checkbox" id="autoSpeakToggle">
+                                <span>Auto Speak</span>
+                            </label>
+                        </div>
+                        <button class="btn-test-voice" id="btnTestVoice">Test Voice</button>
                     </div>
                 </div>
 
