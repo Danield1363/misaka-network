@@ -41,3 +41,19 @@ def test_commands_pending_confirmations(client):
     data = response.json()
     assert "confirmations" in data
     assert "total" in data
+
+
+def test_commands_approve_nonexistent(client):
+    response = client.post("/api/commands/confirmations/nonexistent/approve")
+    assert response.status_code == 404
+
+
+def test_commands_deny_nonexistent(client):
+    response = client.post("/api/commands/confirmations/nonexistent/deny")
+    assert response.status_code == 404
+
+
+def test_commands_route_returns_ui_effect(client):
+    response = client.post("/api/commands/route", json={"message": "ative o modo hud"})
+    data = response.json()
+    assert "metadata" in data or data["type"] == "command_executed"

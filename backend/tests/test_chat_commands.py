@@ -26,7 +26,16 @@ def test_chat_hud_enable(client):
     data = response.json()
     assert data["metadata"]["intent"] == "command"
     assert data["metadata"]["command"] == "hud_on"
-    assert data["metadata"]["ui_effect"] == "hud_enable"
+    assert data["metadata"]["ui_effect"] == "enable_hud"
+
+
+def test_chat_hud_disable(client):
+    response = client.post("/api/chat", json={"message": "desative o modo hud"})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["metadata"]["intent"] == "command"
+    assert data["metadata"]["command"] == "hud_off"
+    assert data["metadata"]["ui_effect"] == "disable_hud"
 
 
 def test_chat_voice_enable(client):
@@ -35,7 +44,16 @@ def test_chat_voice_enable(client):
     data = response.json()
     assert data["metadata"]["intent"] == "command"
     assert data["metadata"]["command"] == "voice_on"
-    assert data["metadata"]["ui_effect"] == "voice_enable"
+    assert data["metadata"]["ui_effect"] == "enable_voice"
+
+
+def test_chat_voice_disable(client):
+    response = client.post("/api/chat", json={"message": "desligue a voz"})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["metadata"]["intent"] == "command"
+    assert data["metadata"]["command"] == "voice_off"
+    assert data["metadata"]["ui_effect"] == "disable_voice"
 
 
 def test_chat_open_settings(client):
@@ -54,6 +72,15 @@ def test_chat_clear_chat(client):
     assert data["metadata"]["intent"] == "command"
     assert data["metadata"]["command"] == "clear_chat"
     assert data["metadata"]["ui_effect"] == "clear_chat"
+
+
+def test_chat_show_alerts(client):
+    response = client.post("/api/chat", json={"message": "mostre os alertas"})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["metadata"]["intent"] == "command"
+    assert data["metadata"]["command"] == "show_alerts"
+    assert data["metadata"]["ui_effect"] == "refresh_alerts"
 
 
 def test_chat_conversation_not_command(client):

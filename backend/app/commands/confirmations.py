@@ -10,6 +10,7 @@ class PendingConfirmation:
     tool_name: str
     parameters: dict
     message: str
+    original_message: str = ""
     created_at: float = field(default_factory=time.time)
     status: str = "pending"
 
@@ -23,7 +24,8 @@ class ConfirmationManager:
         intent: str,
         tool_name: str,
         parameters: dict,
-        message: str
+        message: str,
+        original_message: str = "",
     ) -> PendingConfirmation:
         conf_id = str(uuid.uuid4())[:8]
         confirmation = PendingConfirmation(
@@ -31,25 +33,31 @@ class ConfirmationManager:
             intent=intent,
             tool_name=tool_name,
             parameters=parameters,
-            message=message
+            message=message,
+            original_message=original_message,
         )
         self._pending[conf_id] = confirmation
         return confirmation
 
     def approve(self, confirmation_id: str) -> PendingConfirmation | None:
         conf = self._pending.get(confirmation_id)
-        if conf:
+        if conf and conf.status == "pending":
             conf.status = "approved"
-        return conf
+            return conf
+        return None
 
     def deny(self, confirmation_id: str) -> PendingConfirmation | None:
         conf = self._pending.get(confirmation_id)
-        if conf:
+        if conf and conf.status == "pending":
             conf.status = "denied"
-        return conf
+            return conf
+        return None
 
     def get_pending(self) -> list[PendingConfirmation]:
         return [c for c in self._pending.values() if c.status == "pending"]
+
+    def get_by_id(self, confirmation_id: str) -> PendingConfirmation | None:
+        return self._pending.get(confirmation_id)
 
     def approve_latest(self) -> PendingConfirmation | None:
         pending = self.get_pending()

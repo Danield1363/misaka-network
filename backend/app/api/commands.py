@@ -1,10 +1,12 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from app.commands.router import CommandRouter
 from app.commands.schemas import CommandRouteRequest, CommandRouteResponse
 from app.commands.confirmations import confirmation_manager
+from app.tools.executor import ToolExecutor
 
 router = APIRouter()
 command_router = CommandRouter()
+tool_executor = ToolExecutor()
 
 
 @router.post("/commands/route", response_model=CommandRouteResponse)
@@ -25,11 +27,13 @@ async def pending_confirmations() -> dict:
                 "intent": c.intent,
                 "tool_name": c.tool_name,
                 "message": c.message,
-                "created_at": c.created_at
+                "parameters": c.parameters,
+                "original_message": c.original_message,
+                "created_at": c.created_at,
             }
             for c in pending
         ],
-        "total": len(pending)
+        "total": len(pending),
     }
 
 
@@ -37,20 +41,39 @@ async def pending_confirmations() -> dict:
 async def approve_confirmation(confirmation_id: str) -> dict:
     conf = confirmation_manager.approve(confirmation_id)
     if not conf:
-        return {"error": "Confirmation not found"}
-    from app.commands.router import CommandRouter
-    router_instance = CommandRouter()
-    result = await router_instance.route(conf.message, conf.parameters)
-    return {
-        "id": conf.id,
-        "status": "approved",
-        "result": result
-    }
+        raise HTTPException(status_code=404, detail="Confirmation not found or already processed")
+
+    try:
+        result = await tool_executor.execute(
+            tool_name=conf.tool_name,
+            input_data=conf.parameters,
+            context={},
+            confirmed=True,
+        )
+        return {
+            "id": conf.id,
+            "status": "approved",
+            "intent": conf.intent,
+            "tool_name": conf.tool_name,
+            "result": result,
+        }
+    except Exception as e:
+        return {
+            "id": conf.id,
+            "status": "approved",
+            "intent": conf.intent,
+            "tool_name": conf.tool_name,
+            "result": {"success": False, "error": str(e)},
+        }
 
 
 @router.post("/commands/confirmations/{confirmation_id}/deny")
 async def deny_confirmation(confirmation_id: str) -> dict:
     conf = confirmation_manager.deny(confirmation_id)
     if not conf:
-        return {"error": "Confirmation not found"}
-    return {"id": conf.id, "status": "denied"}
+        raise HTTPException(status_code=404, detail="Confirmation not found or already processed")
+    return {
+        "id": conf.id,
+        "status": "denied",
+        "intent": conf.intent,
+    }

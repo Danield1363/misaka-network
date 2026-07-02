@@ -1,8 +1,12 @@
 import logging
 from typing import Any
 from app.commands.parser import (
-    detect_intent, extract_task_description, extract_reminder_text,
-    extract_memory_content, extract_app_name, extract_search_query
+    detect_intent,
+    extract_task_description,
+    extract_reminder_text,
+    extract_memory_content,
+    extract_app_name,
+    extract_search_query,
 )
 from app.commands.intents import Intent
 from app.tools.executor import ToolExecutor
@@ -14,21 +18,32 @@ class CommandRouter:
     def __init__(self) -> None:
         self.executor = ToolExecutor()
 
-    async def route(self, message: str, context: dict[str, Any] | None = None) -> dict[str, Any] | None:
+    async def route(
+        self,
+        message: str,
+        context: dict[str, Any] | None = None,
+    ) -> dict[str, Any] | None:
         intent = detect_intent(message)
 
         if intent is None:
             return None
 
-        logger.info(f"Command detected: {intent.name} (confidence: {intent.confidence})")
+        logger.info(
+            f"Command detected: {intent.name} (confidence: {intent.confidence})"
+        )
 
         if intent.requires_confirmation:
             from app.commands.confirmations import confirmation_manager
+
             conf = confirmation_manager.create_confirmation(
                 intent=intent.name,
                 tool_name=intent.tool_name or "",
                 parameters=dict(intent.parameters),
-                message=intent.response_message or f"A ação '{intent.name}' requer confirmação. Posso executar?"
+                message=(
+                    intent.response_message
+                    or f"A ação '{intent.name}' requer confirmação. Posso executar?"
+                ),
+                original_message=message,
             )
             return {
                 "type": "confirmation_required",
@@ -56,7 +71,7 @@ class CommandRouter:
             result = await self.executor.execute(
                 tool_name=intent.tool_name,
                 input_data=input_data,
-                context=context or {}
+                context=context or {},
             )
             return {
                 "type": "command_executed",
@@ -65,7 +80,7 @@ class CommandRouter:
                 "success": result.get("success", False),
                 "data": result.get("data", {}),
                 "response_message": intent.response_message,
-                "metadata": result.get("metadata", {})
+                "metadata": result.get("metadata", {}),
             }
         except Exception as e:
             logger.error(f"Command execution error: {e}")
@@ -74,5 +89,5 @@ class CommandRouter:
                 "intent": intent.name,
                 "tool_name": intent.tool_name,
                 "error": str(e),
-                "response_message": f"Erro ao executar comando: {e}"
+                "response_message": f"Erro ao executar comando: {e}",
             }

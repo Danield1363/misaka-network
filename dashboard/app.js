@@ -344,31 +344,41 @@ async function sendMessage() {
         }
 
         // Show command-specific UI effects
-        if (data.metadata && data.metadata.intent === 'command') {
-            if (data.metadata.command === 'clear_chat') {
+        if (data.metadata && data.metadata.ui_effect) {
+            const effect = data.metadata.ui_effect;
+            if (effect === 'clear_chat') {
                 setTimeout(clearChat, 500);
             }
-            if (data.metadata.command === 'hud_enable') {
+            if (effect === 'enable_hud') {
                 hudMode = true;
                 localStorage.setItem('misaka_hud_mode', 'true');
                 updateHUDButton();
             }
-            if (data.metadata.command === 'hud_disable') {
+            if (effect === 'disable_hud') {
                 hudMode = false;
                 localStorage.setItem('misaka_hud_mode', 'false');
                 updateHUDButton();
             }
-            if (data.metadata.command === 'voice_enable') {
+            if (effect === 'enable_voice') {
                 voiceEnabled = true;
                 localStorage.setItem('misaka_voice_enabled', 'true');
                 voiceEnabledToggle.checked = true;
                 updateVoiceButton();
             }
-            if (data.metadata.command === 'voice_disable') {
+            if (effect === 'disable_voice') {
                 voiceEnabled = false;
                 localStorage.setItem('misaka_voice_enabled', 'false');
                 voiceEnabledToggle.checked = false;
                 updateVoiceButton();
+            }
+            if (effect === 'refresh_alerts') {
+                loadAlerts();
+            }
+            if (effect === 'refresh_status') {
+                loadStatus();
+            }
+            if (effect === 'open_settings') {
+                openSettings();
             }
         }
 
