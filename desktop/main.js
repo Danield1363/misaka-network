@@ -262,11 +262,9 @@ function launchApp(appName) {
             try { launcher(); } catch (e) { /* fallback */ }
             return { success: true, app: appName };
         }
-        shell.openExternal(appName);
-        return { success: true, app: appName };
+        return { success: false, error: `App "${appName}" is not in the allowed list.` };
     }
-    shell.openExternal(appName);
-    return { success: true, app: appName };
+    return { success: false, error: `Unsupported platform: ${process.platform}` };
 }
 
 function setupIPC() {
