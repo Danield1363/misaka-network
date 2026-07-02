@@ -17,7 +17,7 @@ Use this checklist before any merge or release.
 | `node --check desktop/preload.js` | OK | PASS |
 | `node --check desktop/control/*.js` | OK | PASS |
 
-## Backend (258 tests)
+## Backend (305 tests)
 
 | Test | Command | Expected | Status |
 |------|---------|----------|--------|
@@ -27,7 +27,7 @@ Use this checklist before any merge or release.
 | LLM status | `test_llm_status` | provider, models, cooldowns | PASS |
 | LLM fallback | `test_llm_fallback` | fallback chain, cooldowns | PASS |
 | Chat conversation | `test_chat` | response, agent, metadata | PASS |
-| Chat commands | `test_chat_commands` | ui_effect correct | PASS |
+| Chat commands | `test_chat_commands` | ui_effect + client_action correct | PASS |
 | Command router | `test_command_router` | intent detection, routing | PASS |
 | Commands API | `test_commands_api` | route, confirmations | PASS |
 | Notifications ack | `test_notifications_ack` | ack-all, summary | PASS |
@@ -38,6 +38,18 @@ Use this checklist before any merge or release.
 | Settings | `test_settings` | get, update, reset | PASS |
 | Devices | `test_devices` | register, heartbeat, list | PASS |
 | Desktop package | `test_desktop_package` | extraResources includes dashboard | PASS |
+| Full suite | `python -m pytest` | 305 passed | PASS |
+
+## Operational Actions
+
+| Command | Expected client action | Expected result |
+|---------|------------------------|-----------------|
+| `abrir notepad no meu computador` | `open_app` / `notepad` | Bloco de Notas opens through desktop bridge |
+| `abra explorer` | `open_app` / `explorer` | Explorador de Arquivos opens through desktop bridge |
+| `abra o youtube` | `open_url` / `https://www.youtube.com` | YouTube opens as a page |
+| `abra o canal do alanzoka no youtube` | `open_url` / YouTube search URL | YouTube channel search opens |
+| `pesquisar wake on lan no Google` | `search_web` / `google` | Google search opens |
+| `pesquisar alanzoka no YouTube` | `search_web` / `youtube` | YouTube search opens |
 
 ## Dashboard
 
