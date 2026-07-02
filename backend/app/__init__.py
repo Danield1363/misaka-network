@@ -37,15 +37,19 @@ def create_app() -> FastAPI:
         "http://localhost:3000",
         "http://localhost:8000",
         "http://127.0.0.1:3000",
-        "http://127.0.0.1:8000",
-        "https://misaka-dashboard.pages.dev",
-        "https://*.pages.dev",
-        "https://*.northflank.app"
+        "http://127.0.0.1:8000"
+    ]
+    
+    allowed_origin_regexes = [
+        r"https://.*\.pages\.dev",
+        r"https://.*\.code\.run",
+        r"https://.*\.northflank\.app"
     ]
     
     app.add_middleware(
         CORSMiddleware,
         allow_origins=allowed_origins,
+        allow_origin_regex="|".join(allowed_origin_regexes),
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"]

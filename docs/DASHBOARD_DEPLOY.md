@@ -32,15 +32,23 @@ A pasta `dashboard/` contém os arquivos estáticos:
    - **Build command:** (vazio - arquivos estáticos)
    - **Build output directory:** `/dashboard`
 
-### 3. Configurar variáveis de ambiente
+### 3. Configurar a URL da API
 
-No painel do Cloudflare Pages, adicione:
+**IMPORTANTE:** Cloudflare Pages **NÃO injeta variáveis de ambiente** em sites estáticos sem build step. A URL da API deve estar hardcoded em `config.js`.
 
+Para atualizar a URL da API:
+
+1. Edite `dashboard/config.js`
+2. Atualize `API_BASE_URL` com a URL do seu backend
+3. Faça commit e push
+
+```javascript
+const MISAKA_CONFIG = {
+    API_BASE_URL: window.location.hostname === 'localhost'
+        ? 'http://127.0.0.1:8000/api'
+        : 'https://p01--misaka-network--nf5wq7twf8xg.code.run/api'
+};
 ```
-MISAKA_API_BASE_URL = https://misaka-core.seu-dominio.com/api
-```
-
-**IMPORTANTE:** A `config.js` já tem fallback para localhost em desenvolvimento.
 
 ### 4. Deploy automático
 
@@ -54,33 +62,26 @@ Cada push para `main` atualiza o site automaticamente.
 const MISAKA_CONFIG = {
     API_BASE_URL: window.location.hostname === 'localhost'
         ? 'http://127.0.0.1:8000/api'
-        : 'https://seu-app.northflank.app/api'
-};
-```
-
-### Para produção
-
-Edite `config.js` ou use variável de ambiente:
-
-```javascript
-const MISAKA_CONFIG = {
-    API_BASE_URL: 'https://misaka-core.seu-dominio.com/api'
+        : 'https://p01--misaka-network--nf5wq7twf8xg.code.run/api',
+    APP_NAME: 'Misaka Dashboard',
+    VERSION: '0.1 Genesis'
 };
 ```
 
 ## CORS
 
-O Misaka Core já está configurado para aceitar:
+O Misaka Core aceita:
 - `https://*.pages.dev`
+- `https://*.code.run`
 - `https://*.northflank.app`
 - `http://localhost:*`
 
-## URLs esperadas
+## URLs
 
 | Ambiente | Dashboard | API |
 |----------|-----------|-----|
 | Local | http://localhost:3000 | http://localhost:8000 |
-| Produção | https://misaka.pages.dev | https://misaka-core.northflank.app |
+| Produção | https://misaka.pages.dev | https://p01--misaka-network--*.code.run |
 
 ## Endpoints consumidos
 
@@ -95,8 +96,8 @@ O Misaka Core já está configurado para aceitar:
 
 - **NUNCA** coloque chaves de API no frontend
 - **NUNCA** commite `.env` ou chaves secretas
-- Use variáveis de ambiente no Cloudflare
 - O backend (Northflank) deve ter as chaves secretas
+- A dashboard apenas lê dados públicos
 
 ## Troubleshooting
 
@@ -114,3 +115,4 @@ O Misaka Core já está configurado para aceitar:
 
 1. Faça rebuild no Cloudflare Pages
 2. Verifique o cache do navegador
+3. Lembre: variáveis de ambiente do Cloudflare não funcionam para sites estáticos
