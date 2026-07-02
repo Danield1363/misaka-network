@@ -1,32 +1,35 @@
 import logging
 from typing import Any
+
 from app.web_actions.parser import parse_web_entities
-from app.web_actions.schemas import WebAction, ParsedEntities
+from app.web_actions.schemas import ParsedEntities, WebAction
 from app.web_actions.url_templates import (
-    build_url,
-    KNOWN_SITES,
-    GOOGLE_SEARCH,
-    YOUTUBE_SEARCH,
-    YOUTUBE_CHANNEL_SEARCH,
-    YOUTUBE_VIDEO_SEARCH,
     GITHUB_SEARCH,
+    GOOGLE_SEARCH,
+    GOOGLE_SITE_SEARCH,
+    KNOWN_SITES,
     REDDIT_SEARCH,
     WIKIPEDIA_PT,
-    GOOGLE_SITE_SEARCH,
+    YOUTUBE_CHANNEL_SEARCH,
+    YOUTUBE_SEARCH,
+    YOUTUBE_VIDEO_SEARCH,
+    build_url,
 )
 
 logger = logging.getLogger(__name__)
 
 ACTION_RESPONSES = {
-    "open_youtube_channel_search": "Abrindo busca pelo canal no YouTube, diz Misaka Misaka.",
-    "open_youtube_video_search": "Abrindo busca de vídeo no YouTube, diz Misaka Misaka.",
-    "open_youtube_search": "Abrindo YouTube, diz Misaka Misaka.",
-    "search_google": "Pesquisando no Google, diz Misaka Misaka.",
-    "search_github": "Pesquisando no GitHub, diz Misaka Misaka.",
-    "search_reddit": "Pesquisando no Reddit, diz Misaka Misaka.",
-    "search_wikipedia": "Pesquisando na Wikipédia, diz Misaka Misaka.",
-    "search_site": "Pesquisando no site, diz Misaka Misaka.",
-    "search_web": "Pesquisando na web, diz Misaka Misaka.",
+    "open_youtube_home": "Vou abrir o YouTube.",
+    "open_google_home": "Vou abrir o Google.",
+    "open_youtube_channel_search": "Vou abrir a busca do canal no YouTube.",
+    "open_youtube_video_search": "Vou abrir a busca no YouTube.",
+    "open_youtube_search": "Vou pesquisar no YouTube.",
+    "search_google": "Vou pesquisar no Google.",
+    "search_github": "Vou pesquisar no GitHub.",
+    "search_reddit": "Vou pesquisar no Reddit.",
+    "search_wikipedia": "Vou pesquisar na Wikipedia.",
+    "search_site": "Vou pesquisar no site.",
+    "search_web": "Vou pesquisar na web.",
 }
 
 
@@ -51,10 +54,7 @@ class WebActionEngine:
         if not url:
             return None
 
-        response = ACTION_RESPONSES.get(
-            entities.action_type,
-            "Ação executada, diz Misaka Misaka."
-        )
+        response = ACTION_RESPONSES.get(entities.action_type, "Acao pronta.")
 
         self.session_context["last_site"] = entities.target_site
         self.session_context["last_query"] = entities.query
@@ -75,6 +75,11 @@ class WebActionEngine:
     def _build_url(self, entities: ParsedEntities) -> str | None:
         action = entities.action_type
         query = entities.query
+
+        if action == "open_youtube_home":
+            return "https://www.youtube.com"
+        if action == "open_google_home":
+            return "https://www.google.com"
 
         if not query:
             return None
@@ -97,7 +102,11 @@ class WebActionEngine:
             site_info = KNOWN_SITES.get(entities.target_site)
             if site_info and "search" in site_info["templates"]:
                 return build_url(site_info["templates"]["search"], query)
-            domain = entities.target_site if "." in entities.target_site else f"{entities.target_site}.com"
+            domain = (
+                entities.target_site
+                if "." in entities.target_site
+                else f"{entities.target_site}.com"
+            )
             return build_url(GOOGLE_SITE_SEARCH, query, site=domain)
 
         return build_url(GOOGLE_SEARCH, query)

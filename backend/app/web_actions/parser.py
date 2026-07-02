@@ -24,6 +24,14 @@ def parse_web_entities(message: str) -> ParsedEntities:
             entities.target_site = site
             break
 
+    if not entities.target_site:
+        if re.search(r"\b(?:abra|abrir|abre)\s+(?:o\s+)?(?:site\s+do\s+)?youtube\b", lower):
+            entities.target_site = "youtube"
+            entities.action_type = "open_youtube_home"
+        elif re.search(r"\b(?:abra|abrir|abre)\s+(?:o\s+)?google\b", lower):
+            entities.target_site = "google"
+            entities.action_type = "open_google_home"
+
     content_patterns = [
         (r"canal\s+(?:do|da|de)\s+(.+?)(?:\s+no\s+|\s*$)", "channel"),
         (r"vídeo\s+(?:do|da|de)\s+(.+?)(?:\s+de\s+|\s+no\s+|\s*$)", "video"),
@@ -72,6 +80,7 @@ def _extract_query(lower: str, entities: ParsedEntities) -> str:
         return entities.topic
 
     query_patterns = [
+        r"pesquisar\s+(?:no\s+\w+\s+)?(?:por\s+)?(.+?)(?:\s+no\s+|\s*$)",
         r"pesquise\s+(?:no\s+\w+\s+)?(?:por\s+)?(.+?)(?:\s+no\s+|\s*$)",
         r"procure\s+(?:no\s+\w+\s+)?(?:por\s+)?(.+?)(?:\s+no\s+|\s*$)",
         r"busque\s+(?:no\s+\w+\s+)?(?:por\s+)?(.+?)(?:\s+no\s+|\s*$)",

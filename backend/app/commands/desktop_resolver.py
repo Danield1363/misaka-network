@@ -28,8 +28,6 @@ APP_ALIASES = {
     "terminal": "terminal",
     "cmd": "terminal",
     "powershell": "terminal",
-    "spotify": "spotify",
-    "youtube": "youtube",
 }
 
 VERB_PATTERNS = [
@@ -105,7 +103,7 @@ def detect_desktop_command(message: str) -> DesktopCommand:
             app=app,
             target_device="desktop",
             confidence=0.95,
-            response_message=f"Abrindo {_pretty_app_name(app)}, diz Misaka Misaka.",
+            response_message=f"Vou abrir {_pretty_app_name(app)}.",
         )
 
     if app and not has_verb:
@@ -116,7 +114,7 @@ def detect_desktop_command(message: str) -> DesktopCommand:
             app=app,
             target_device="desktop",
             confidence=0.85,
-            response_message=f"Abrindo {_pretty_app_name(app)}, diz Misaka Misaka.",
+            response_message=f"Vou abrir {_pretty_app_name(app)}.",
         )
 
     return DesktopCommand()
@@ -134,7 +132,5 @@ def _pretty_app_name(app: str) -> str:
         "edge": "o Edge",
         "firefox": "o Firefox",
         "terminal": "o terminal",
-        "spotify": "o Spotify",
-        "youtube": "o YouTube",
     }
     return names.get(app, app)

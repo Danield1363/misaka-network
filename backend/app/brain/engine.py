@@ -67,6 +67,66 @@ class BrainEngine:
         memories = await self.memory_engine.get_relevant_context(message)
         memory_enabled = self.memory_engine.enabled
 
+        from app.commands.router import CommandRouter
+        router = CommandRouter()
+        result = await router.route(message)
+        if result is not None:
+            if result.get("type") == "command_executed":
+                response_text = result.get("response_message", "Comando executado.")
+                formatted_response = self.persona_engine.format_response(response_text)
+
+                await self.memory_engine.save_interaction(
+                    conversation_id=conversation_id,
+                    user_message=message,
+                    assistant_response=formatted_response,
+                    metadata={"intent": "command", "command": result.get("intent")},
+                )
+
+                command_intent = result.get("intent", "")
+                response_metadata = {
+                    "intent": "command",
+                    "command": command_intent,
+                    "tool_name": result.get("tool_name"),
+                    "action_taken": result.get("tool_name"),
+                    "ui_effect": UI_EFFECT_MAP.get(command_intent, ""),
+                    "version": self.settings.VERSION,
+                    "memory_enabled": memory_enabled,
+                    "memories_used": len(memories),
+                    **result.get("metadata", {}),
+                }
+                if result.get("client_action"):
+                    response_metadata["client_action"] = result["client_action"]
+
+                return ChatResponse(
+                    response=formatted_response,
+                    agent="command_router",
+                    model=None,
+                    execution_time=round(time.time() - start_time, 4),
+                    conversation_id=conversation_id,
+                    metadata=response_metadata,
+                )
+
+            if result.get("type") == "confirmation_required":
+                response_text = result.get("message", "Essa acao requer confirmacao.")
+                formatted_response = self.persona_engine.format_response(response_text)
+
+                return ChatResponse(
+                    response=formatted_response,
+                    agent="command_router",
+                    model=None,
+                    execution_time=round(time.time() - start_time, 4),
+                    conversation_id=conversation_id,
+                    metadata={
+                        "intent": "command",
+                        "command": result.get("intent"),
+                        "requires_confirmation": True,
+                        "confirmation_id": result.get("confirmation_id"),
+                        "version": self.settings.VERSION,
+                        "memory_enabled": memory_enabled,
+                        "memories_used": len(memories),
+                    },
+                )
+
         intent = self.planner.detect_intent(message)
         logger.info(f"Detected intent: {intent}")
 

@@ -97,8 +97,8 @@ def test_chat_open_youtube_returns_client_action(client):
     data = response.json()
     assert data["metadata"]["intent"] == "command"
     assert "client_action" in data["metadata"]
-    assert data["metadata"]["client_action"]["type"] in ("open_url", "open_app")
-    assert "youtube" in str(data["metadata"]["client_action"])
+    assert data["metadata"]["client_action"]["type"] == "open_url"
+    assert data["metadata"]["client_action"]["url"] == "https://www.youtube.com"
 
 
 def test_chat_open_discord_returns_client_action(client):
@@ -127,3 +127,59 @@ def test_chat_search_youtube_returns_client_action(client):
     assert "client_action" in data["metadata"]
     assert data["metadata"]["client_action"]["type"] == "open_url"
     assert "alanzoka" in data["metadata"]["client_action"]["url"]
+
+
+def test_chat_open_notepad_ptbr_returns_client_action(client):
+    response = client.post("/api/chat", json={"message": "abrir notepad no meu computador"})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["agent"] == "command_router"
+    assert data["metadata"]["intent"] == "command"
+    assert data["metadata"]["client_action"]["type"] == "open_app"
+    assert data["metadata"]["client_action"]["app"] == "notepad"
+
+
+def test_chat_open_explorer_returns_client_action(client):
+    response = client.post("/api/chat", json={"message": "abra explorer"})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["metadata"]["client_action"]["type"] == "open_app"
+    assert data["metadata"]["client_action"]["app"] == "explorer"
+
+
+def test_chat_open_calculator_returns_client_action(client):
+    response = client.post("/api/chat", json={"message": "abrir calculadora"})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["metadata"]["client_action"]["type"] == "open_app"
+    assert data["metadata"]["client_action"]["app"] == "calculator"
+
+
+def test_chat_search_google_returns_search_web_action(client):
+    response = client.post("/api/chat", json={"message": "pesquisar wake on lan no Google"})
+    assert response.status_code == 200
+    data = response.json()
+    action = data["metadata"]["client_action"]
+    assert action["type"] == "search_web"
+    assert action["provider"] == "google"
+    assert action["query"] == "wake on lan"
+
+
+def test_chat_search_youtube_returns_search_web_action(client):
+    response = client.post("/api/chat", json={"message": "pesquisar alanzoka no YouTube"})
+    assert response.status_code == 200
+    data = response.json()
+    action = data["metadata"]["client_action"]
+    assert action["type"] == "search_web"
+    assert action["provider"] == "youtube"
+    assert action["query"] == "alanzoka"
+
+
+def test_chat_open_youtube_channel_with_open_verb(client):
+    response = client.post("/api/chat", json={"message": "abra o canal do alanzoka no youtube"})
+    assert response.status_code == 200
+    data = response.json()
+    action = data["metadata"]["client_action"]
+    assert action["type"] == "open_url"
+    assert "youtube.com/results" in action["url"]
+    assert "alanzoka" in action["url"]

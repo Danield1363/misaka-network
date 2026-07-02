@@ -230,13 +230,13 @@ const WINDOWS_APP_LAUNCHERS = {
         const programFiles = process.env['PROGRAMFILES'] || 'C:\\Program Files';
         const programFilesX86 = process.env['PROGRAMFILES(X86)'] || 'C:\\Program Files (x86)';
         const paths = [
-            path.join(localAppData, 'Google', 'Chrome', 'Application', 'chrome.exe'),
             path.join(programFiles, 'Google', 'Chrome', 'Application', 'chrome.exe'),
             path.join(programFilesX86, 'Google', 'Chrome', 'Application', 'chrome.exe'),
+            path.join(localAppData, 'Google', 'Chrome', 'Application', 'chrome.exe'),
         ];
         const found = paths.find(p => fs.existsSync(p));
-        if (found) spawn(found, [], { detached: true, stdio: 'ignore' }).unref();
-        else shell.openExternal('https://www.google.com');
+        if (!found) throw new Error('Chrome nao encontrado nos caminhos permitidos.');
+        spawn(found, [], { detached: true, stdio: 'ignore' }).unref();
     },
     edge: () => {
         const localAppData = process.env.LOCALAPPDATA || '';
@@ -246,8 +246,8 @@ const WINDOWS_APP_LAUNCHERS = {
             path.join(programFiles, 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
         ];
         const found = paths.find(p => fs.existsSync(p));
-        if (found) spawn(found, [], { detached: true, stdio: 'ignore' }).unref();
-        else shell.openExternal('https://www.google.com');
+        if (!found) throw new Error('Edge nao encontrado nos caminhos permitidos.');
+        spawn(found, [], { detached: true, stdio: 'ignore' }).unref();
     },
     vscode: () => {
         const localAppData = process.env.LOCALAPPDATA || '';
@@ -257,8 +257,8 @@ const WINDOWS_APP_LAUNCHERS = {
             path.join(programFiles, 'Microsoft VS Code', 'Code.exe'),
         ];
         const found = paths.find(p => fs.existsSync(p));
-        if (found) spawn(found, [], { detached: true, stdio: 'ignore' }).unref();
-        else spawn('code', [], { detached: true, stdio: 'ignore' }).unref();
+        if (!found) throw new Error('VS Code nao encontrado nos caminhos permitidos.');
+        spawn(found, [], { detached: true, stdio: 'ignore' }).unref();
     },
     explorer: () => spawn('explorer.exe', [], { detached: true, stdio: 'ignore' }).unref(),
     discord: () => {
@@ -269,31 +269,36 @@ const WINDOWS_APP_LAUNCHERS = {
             path.join(localAppData, 'DiscordPTB', 'Update.exe'),
         ];
         const found = paths.find(p => fs.existsSync(p));
-        if (found) spawn(found, ['--processStart', 'Discord.exe'], { detached: true, stdio: 'ignore' }).unref();
-        else shell.openExternal('https://discord.com/app');
+        if (!found) throw new Error('Discord nao encontrado nos caminhos permitidos.');
+        spawn(found, ['--processStart', 'Discord.exe'], { detached: true, stdio: 'ignore' }).unref();
     },
     notepad: () => spawn('notepad.exe', [], { detached: true, stdio: 'ignore' }).unref(),
     calculator: () => spawn('calc.exe', [], { detached: true, stdio: 'ignore' }).unref(),
-    youtube: () => shell.openExternal('https://www.youtube.com'),
-    spotify: () => shell.openExternal('https://open.spotify.com'),
 };
 
 function launchApp(appName) {
-    if (process.platform === 'win32') {
-        const launcher = WINDOWS_APP_LAUNCHERS[appName];
-        if (launcher) {
-            try {
-                launcher();
-                return { success: true, app: appName, method: 'allowlist' };
-            } catch (e) {
-                return { success: false, app: appName, error: `Falha ao executar: ${e.message}` };
-            }
-        }
-        return { success: false, app: appName, error: `App "${appName}" não está na allowlist.` };
+    if (!appName || typeof appName !== 'string') {
+        return { success: false, error: 'Nome do app obrigatorio.' };
     }
-    return { success: false, app: appName, error: `Plataforma não suportada: ${process.platform}` };
-}
 
+    const normalizedApp = appName.toLowerCase().trim();
+
+    if (process.platform !== 'win32') {
+        return { success: false, app: normalizedApp, error: `Plataforma nao suportada: ${process.platform}` };
+    }
+
+    const launcher = WINDOWS_APP_LAUNCHERS[normalizedApp];
+    if (!launcher) {
+        return { success: false, app: normalizedApp, error: `App "${normalizedApp}" nao esta na allowlist.` };
+    }
+
+    try {
+        launcher();
+        return { success: true, app: normalizedApp, method: 'allowlist' };
+    } catch (e) {
+        return { success: false, app: normalizedApp, error: `Falha ao executar: ${e.message}` };
+    }
+}
 function setupIPC() {
     ipcMain.handle('get-config', () => CONFIG);
 
@@ -309,20 +314,23 @@ function setupIPC() {
         return launchApp(appName);
     });
 
-    ipcMain.handle('open-url', (event, { url }) => {
+    ipcMain.handle('open-url', async (event, { url }) => {
         if (typeof url === 'string' && (url.startsWith('http://') || url.startsWith('https://'))) {
-            shell.openExternal(url);
-            return { success: true, url };
+            try {
+                await shell.openExternal(url);
+                return { success: true, url };
+            } catch (e) {
+                return { success: false, url, error: e.message };
+            }
         }
         return { success: false, error: 'Invalid URL. Must start with http:// or https://' };
     });
 
-    ipcMain.handle('search-web', (event, { query, provider }) => {
+    ipcMain.handle('search-web', async (event, { query, provider }) => {
         if (!query || typeof query !== 'string') {
             return { success: false, error: 'Query is required' };
         }
-        const { quote_plus } = require('querystring');
-        const encoded = quote_plus(query);
+        const encoded = encodeURIComponent(query.trim());
         const urls = {
             google: `https://www.google.com/search?q=${encoded}`,
             youtube: `https://www.youtube.com/results?search_query=${encoded}`,
@@ -330,8 +338,12 @@ function setupIPC() {
             reddit: `https://www.reddit.com/search/?q=${encoded}`,
         };
         const url = urls[provider] || urls.google;
-        shell.openExternal(url);
-        return { success: true, url, provider };
+        try {
+            await shell.openExternal(url);
+            return { success: true, url, provider: provider || 'google' };
+        } catch (e) {
+            return { success: false, url, provider: provider || 'google', error: e.message };
+        }
     });
 
     ipcMain.handle('get-system-status', () => {

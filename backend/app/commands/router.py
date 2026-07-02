@@ -48,6 +48,7 @@ class CommandRouter:
 
         web_result = web_action_engine.process(message)
         if web_result:
+            client_action = self._build_web_client_action(web_result)
             return {
                 "type": "command_executed",
                 "intent": "web_action",
@@ -55,12 +56,7 @@ class CommandRouter:
                 "success": True,
                 "data": {"url": web_result.url},
                 "response_message": web_result.response_message,
-                "client_action": {
-                    "type": "open_url",
-                    "target": web_result.target,
-                    "url": web_result.url,
-                    "source": "web_action_engine",
-                },
+                "client_action": client_action,
                 "metadata": {"response_mode": "action_short"},
             }
 
@@ -158,12 +154,12 @@ class CommandRouter:
 
         if intent_name == "search_web":
             query = extract_search_query(message)
-            url = (
-                f"https://www.google.com/search?q={query.replace(' ', '+')}"
-                if query
-                else "https://www.google.com"
-            )
-            return {"type": "open_url", "target": "desktop", "url": url}
+            return {
+                "type": "search_web",
+                "target": "desktop",
+                "provider": "google",
+                "query": query,
+            }
 
         if intent_name == "pc_status":
             return {"type": "get_system_status", "target": "desktop"}
@@ -179,3 +175,38 @@ class CommandRouter:
             }
 
         return None
+
+    def _build_web_client_action(self, web_result: Any) -> dict[str, Any]:
+        if web_result.action_type in {
+            "search_google",
+            "open_youtube_search",
+            "search_github",
+            "search_reddit",
+            "search_wikipedia",
+            "search_site",
+            "search_web",
+        }:
+            provider_map = {
+                "search_google": "google",
+                "open_youtube_search": "youtube",
+                "search_github": "github",
+                "search_reddit": "reddit",
+                "search_wikipedia": "google",
+                "search_site": web_result.site or "google",
+                "search_web": "google",
+            }
+            return {
+                "type": "search_web",
+                "target": web_result.target,
+                "provider": provider_map.get(web_result.action_type, "google"),
+                "query": web_result.query,
+                "url": web_result.url,
+                "source": "web_action_engine",
+            }
+
+        return {
+            "type": "open_url",
+            "target": web_result.target,
+            "url": web_result.url,
+            "source": "web_action_engine",
+        }

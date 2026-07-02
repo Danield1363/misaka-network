@@ -47,6 +47,8 @@ let currentUtterance = null;
 let pendingConfirmation = null;
 let wakeWordEnabled = localStorage.getItem('misaka_wake_word') === 'true';
 let wakeRecognition = null;
+let wakeWordActive = false;
+let wakeWordError = '';
 let compactMode = localStorage.getItem('misaka_compact_mode') === 'true';
 let desktopNotificationsEnabled = localStorage.getItem('misaka_desktop_notifications') === 'true';
 
@@ -326,85 +328,75 @@ function cleanAssistantText(text) {
 
 // ==================== Client Action Handler ====================
 async function handleClientAction(action) {
-    if (!action || !action.type) return;
+    if (!action || !action.type) return '';
 
     const isDesktop = window.misakaDesktop && window.misakaDesktop.isAvailable;
 
     if (action.type === 'open_url') {
         if (isDesktop && window.misakaDesktop.openUrl) {
             const result = await window.misakaDesktop.openUrl(action.url);
-            if (result && result.success) {
-                addMessage('Site aberto, diz Misaka Misaka.', 'assistant');
-            } else {
-                addMessage('Não consegui abrir o site. Tente novamente.', 'assistant');
-            }
-        } else {
-            try {
-                window.open(action.url, '_blank');
-                addMessage('Site aberto, diz Misaka Misaka.', 'assistant');
-            } catch (e) {
-                addMessage('Popup bloqueado. Permita popups para este site.', 'assistant');
-            }
+            if (result && result.success) return 'Aberto.';
+            const reason = (result && result.error) || 'erro desconhecido';
+            return `Nao consegui abrir. ${reason}`;
         }
-        return;
+        try {
+            window.open(action.url, '_blank');
+            return 'Aberto.';
+        } catch (e) {
+            return 'Popup bloqueado. Permita popups para este site.';
+        }
     }
 
     if (action.type === 'open_app') {
         const appLabel = action.app || 'aplicativo';
         if (isDesktop && window.misakaDesktop.openApp) {
             const result = await window.misakaDesktop.openApp(action.app);
-            if (result && result.success) {
-                addMessage(`${appLabel} aberto, diz Misaka Misaka.`, 'assistant');
-            } else {
-                const reason = (result && result.error) || 'app não encontrado';
-                addMessage(`Não consegui abrir ${appLabel}. ${reason}, diz Misaka Misaka.`, 'assistant');
-            }
-        } else {
-            addMessage('Não consigo abrir aplicativos locais pelo navegador. Use o app desktop da Misaka, diz Misaka Misaka.', 'assistant');
+            if (result && result.success) return `${appLabel} aberto.`;
+            const reason = (result && result.error) || 'app nao encontrado';
+            return `Nao consegui abrir ${appLabel}. ${reason}`;
         }
-        return;
+        return 'Nao consigo abrir aplicativos locais pelo navegador. Use o app desktop da Misaka.';
     }
 
     if (action.type === 'search_web') {
         if (isDesktop && window.misakaDesktop.searchWeb) {
-            await window.misakaDesktop.searchWeb(action.query, action.provider);
-        } else {
-            const provider = action.provider || 'google';
-            const urls = {
-                google: `https://www.google.com/search?q=${encodeURIComponent(action.query)}`,
-                youtube: `https://www.youtube.com/results?search_query=${encodeURIComponent(action.query)}`,
-                github: `https://github.com/search?q=${encodeURIComponent(action.query)}&type=repositories`,
-                reddit: `https://www.reddit.com/search/?q=${encodeURIComponent(action.query)}`,
-            };
-            try {
-                window.open(urls[provider] || urls.google, '_blank');
-            } catch (e) {
-                addMessage('Popup bloqueado. Permita popups para este site.', 'assistant');
-            }
+            const result = await window.misakaDesktop.searchWeb(action.query, action.provider);
+            if (result && result.success) return 'Pesquisa aberta.';
+            const reason = (result && result.error) || 'erro desconhecido';
+            return `Nao consegui pesquisar. ${reason}`;
         }
-        addMessage('Pesquisa aberta, diz Misaka Misaka.', 'assistant');
-        return;
+        const provider = action.provider || 'google';
+        const urls = {
+            google: `https://www.google.com/search?q=${encodeURIComponent(action.query)}`,
+            youtube: `https://www.youtube.com/results?search_query=${encodeURIComponent(action.query)}`,
+            github: `https://github.com/search?q=${encodeURIComponent(action.query)}&type=repositories`,
+            reddit: `https://www.reddit.com/search/?q=${encodeURIComponent(action.query)}`,
+        };
+        try {
+            window.open(action.url || urls[provider] || urls.google, '_blank');
+            return 'Pesquisa aberta.';
+        } catch (e) {
+            return 'Popup bloqueado. Permita popups para este site.';
+        }
     }
 
     if (action.type === 'get_system_status') {
         if (isDesktop && window.misakaDesktop.getSystemStatus) {
             const status = await window.misakaDesktop.getSystemStatus();
-            addMessage(`PC: ${status.platform} | RAM: ${Math.round(status.memory?.heapUsed / 1024 / 1024 || 0)}MB`, 'assistant');
+            return `PC: ${status.platform} | RAM: ${Math.round(status.memory?.heapUsed / 1024 / 1024 || 0)}MB`;
         }
-        return;
+        return 'Status do PC indisponivel fora do app desktop.';
     }
 
-    if (action.type === 'vibrate') {
-        addMessage('Comando de vibração enviado ao celular, diz Misaka Misaka.', 'assistant');
-        return;
-    }
+    if (action.type === 'vibrate') return 'Comando de vibracao enviado ao celular.';
 
     if (action.type === 'show_toast') {
         showToast(action.message || 'Alerta do Misaka', 'info');
-        return;
+        return '';
     }
-}
 
+    return '';
+}
 // ==================== Chat Functions ====================
 async function sendMessage() {
     const message = messageInput.value.trim();
@@ -431,12 +423,20 @@ async function sendMessage() {
         const data = await response.json();
         conversationId = data.conversation_id;
 
+        const clientAction = data.metadata && data.metadata.client_action;
+        let assistantResponse = data.response;
+        if (clientAction) {
+            assistantResponse = await handleClientAction(clientAction);
+        }
+
         setCoreState('speaking');
-        addMessage(data.response, 'assistant');
+        if (assistantResponse) {
+            addMessage(assistantResponse, 'assistant');
+        }
 
         // Auto speak - FIXED: always speak if enabled, not just first time
-        if (voiceEnabled && autoSpeak) {
-            speak(data.response);
+        if (voiceEnabled && autoSpeak && assistantResponse) {
+            speak(assistantResponse);
         }
 
         // Show command-specific UI effects
@@ -476,11 +476,6 @@ async function sendMessage() {
             if (effect === 'open_settings') {
                 openSettings();
             }
-        }
-
-        // Execute client actions (open apps, URLs, etc.)
-        if (data.metadata && data.metadata.client_action) {
-            handleClientAction(data.metadata.client_action);
         }
 
         setTimeout(() => setCoreState(null), 3000);
@@ -654,19 +649,57 @@ async function loadSettingsInfo() {
 }
 
 // ==================== Wake Word ====================
+function speechRecognitionSupported() {
+    return 'webkitSpeechRecognition' in window || 'SpeechRecognition' in window;
+}
+
+function updateWakeWordUi() {
+    btnWakeWord.style.color = wakeWordActive ? 'var(--color-primary)' : 'var(--color-muted)';
+    btnWakeWord.title = wakeWordError || (wakeWordActive ? 'Wake word ativo' : 'Wake word desligado');
+    const toggle = document.getElementById('wakeWordToggle');
+    if (toggle) toggle.checked = wakeWordEnabled;
+}
+
 function initWakeWord() {
-    const supported = 'webkitSpeechRecognition' in window || 'SpeechRecognition' in window;
-    if (!supported) {
-        btnWakeWord.title = 'Reconhecimento de voz não disponível neste navegador. Use Chrome ou Edge.';
+    wakeWordError = '';
+    if (!speechRecognitionSupported()) {
+        wakeWordError = 'Reconhecimento de voz nao disponivel neste navegador. Use o app desktop com suporte a SpeechRecognition, Chrome ou Edge.';
+        wakeWordEnabled = false;
+        localStorage.setItem('misaka_wake_word', 'false');
         btnWakeWord.style.opacity = '0.4';
+        updateWakeWordUi();
+        return;
     }
-    if (!wakeWordEnabled) return;
-    if (supported) startWakeWord();
+    btnWakeWord.style.opacity = '1';
+    updateWakeWordUi();
+    if (wakeWordEnabled) startWakeWord();
+}
+
+function extractWakeCommand(transcript) {
+    const match = transcript.match(/(?:^|\b)(?:ei\s+|ok\s+)?misaka[,.!?:;\s]*(.*)$/i);
+    return match ? match[1].trim() : '';
+}
+
+function submitWakeCommand(command) {
+    if (!command) return false;
+    messageInput.value = command;
+    sendMessage();
+    return true;
 }
 
 function startWakeWord() {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) return;
+    if (!SpeechRecognition) {
+        wakeWordError = 'Reconhecimento de voz nao disponivel neste navegador.';
+        wakeWordEnabled = false;
+        wakeWordActive = false;
+        localStorage.setItem('misaka_wake_word', 'false');
+        updateWakeWordUi();
+        showToast(wakeWordError, 'warning');
+        return;
+    }
+
+    if (wakeRecognition) stopWakeWord(false);
 
     wakeRecognition = new SpeechRecognition();
     wakeRecognition.continuous = true;
@@ -678,58 +711,84 @@ function startWakeWord() {
     wakeRecognition.onresult = (event) => {
         const last = event.results[event.results.length - 1];
         const transcript = last[0].transcript.toLowerCase().trim();
+        const inlineCommand = extractWakeCommand(transcript);
 
-        if (!wakeDetected) {
-            if (transcript.includes('misaka')) {
-                wakeDetected = true;
-                wakeIndicator.style.display = 'flex';
-                setCoreState('thinking');
-                showToast('Wake word detected! Fale seu comando.', 'info');
+        if (transcript.includes('misaka')) {
+            wakeDetected = true;
+            wakeIndicator.style.display = 'flex';
+            setCoreState('thinking');
 
-                setTimeout(() => {
-                    wakeDetected = false;
-                }, 5000);
+            if (inlineCommand && last.isFinal && submitWakeCommand(inlineCommand)) {
+                wakeDetected = false;
+                wakeIndicator.style.display = 'none';
+                setCoreState(null);
             }
-        } else if (last.isFinal) {
-            const command = transcript.replace(/(?:ei\s+|ok\s+)?misaka\s*/i, '').trim();
-            if (command) {
-                messageInput.value = command;
-                sendMessage();
+            return;
+        }
+
+        if (wakeDetected && last.isFinal) {
+            if (submitWakeCommand(transcript)) {
+                wakeDetected = false;
+                wakeIndicator.style.display = 'none';
+                setCoreState(null);
             }
-            wakeDetected = false;
-            wakeIndicator.style.display = 'none';
-            setCoreState(null);
         }
     };
 
     wakeRecognition.onerror = (event) => {
-        if (event.error !== 'no-speech') {
-            console.error('Wake word error:', event.error);
-        }
+        if (event.error === 'no-speech') return;
+        wakeWordError = `Wake word falhou: ${event.error}`;
+        wakeWordActive = false;
+        updateWakeWordUi();
+        showToast(wakeWordError, 'warning');
     };
 
     wakeRecognition.onend = () => {
+        wakeWordActive = false;
+        updateWakeWordUi();
         if (wakeWordEnabled) {
-            try { wakeRecognition.start(); } catch (e) {}
+            try {
+                wakeRecognition.start();
+                wakeWordActive = true;
+                wakeWordError = '';
+                updateWakeWordUi();
+            } catch (e) {
+                wakeWordError = `Wake word falhou ao reiniciar: ${e.message}`;
+                updateWakeWordUi();
+            }
         }
     };
 
     try {
         wakeRecognition.start();
+        wakeWordActive = true;
+        wakeWordError = '';
+        updateWakeWordUi();
     } catch (e) {
-        console.error('Failed to start wake word:', e);
+        wakeWordError = `Wake word falhou ao iniciar: ${e.message}`;
+        wakeWordActive = false;
+        wakeWordEnabled = false;
+        localStorage.setItem('misaka_wake_word', 'false');
+        updateWakeWordUi();
+        showToast(wakeWordError, 'warning');
     }
 }
 
-function stopWakeWord() {
+function stopWakeWord(updateEnabled = true) {
     if (wakeRecognition) {
         wakeRecognition.onend = null;
         wakeRecognition.stop();
         wakeRecognition = null;
     }
+    if (updateEnabled) {
+        wakeWordEnabled = false;
+        localStorage.setItem('misaka_wake_word', 'false');
+    }
+    wakeWordActive = false;
     wakeIndicator.style.display = 'none';
+    setCoreState(null);
+    updateWakeWordUi();
 }
-
 // ==================== Confirmation Modal ====================
 function showConfirmation(title, message, payload) {
     modalOverlay.style.display = 'flex';
@@ -841,9 +900,12 @@ document.getElementById('btnRefreshAlerts').addEventListener('click', loadAlerts
 
 // Wake word
 btnWakeWord.addEventListener('click', () => {
-    const supported = 'webkitSpeechRecognition' in window || 'SpeechRecognition' in window;
-    if (!supported) {
-        showToast('Reconhecimento de voz não disponível neste navegador. Use Chrome ou Edge.', 'warning');
+    if (!speechRecognitionSupported()) {
+        wakeWordError = 'Reconhecimento de voz nao disponivel neste navegador. Use o app desktop com suporte a SpeechRecognition, Chrome ou Edge.';
+        wakeWordEnabled = false;
+        localStorage.setItem('misaka_wake_word', 'false');
+        updateWakeWordUi();
+        showToast(wakeWordError, 'warning');
         return;
     }
     wakeWordEnabled = !wakeWordEnabled;
@@ -855,9 +917,8 @@ btnWakeWord.addEventListener('click', () => {
         stopWakeWord();
         showToast('Wake word desativado.', 'info');
     }
-    btnWakeWord.style.color = wakeWordEnabled ? 'var(--color-primary)' : 'var(--color-muted)';
+    updateWakeWordUi();
 });
-
 // Settings toggles
 document.getElementById('speakSuffixToggle').addEventListener('change', (e) => {
     localStorage.setItem('misaka_speak_suffix', e.target.checked);
@@ -884,6 +945,15 @@ document.getElementById('compactModeToggle').addEventListener('change', (e) => {
 });
 
 document.getElementById('wakeWordToggle').addEventListener('change', (e) => {
+    if (e.target.checked && !speechRecognitionSupported()) {
+        wakeWordError = 'Reconhecimento de voz nao disponivel neste navegador. Use o app desktop com suporte a SpeechRecognition, Chrome ou Edge.';
+        e.target.checked = false;
+        wakeWordEnabled = false;
+        localStorage.setItem('misaka_wake_word', 'false');
+        updateWakeWordUi();
+        showToast(wakeWordError, 'warning');
+        return;
+    }
     wakeWordEnabled = e.target.checked;
     localStorage.setItem('misaka_wake_word', wakeWordEnabled);
     if (wakeWordEnabled) {
@@ -891,8 +961,8 @@ document.getElementById('wakeWordToggle').addEventListener('change', (e) => {
     } else {
         stopWakeWord();
     }
+    updateWakeWordUi();
 });
-
 document.getElementById('btnClearAllData').addEventListener('click', () => {
     if (confirm('Tem certeza? Isso vai limpar todos os dados locais.')) {
         localStorage.clear();
@@ -938,10 +1008,7 @@ initVoiceControls();
 updateVoiceButton();
 updateHUDButton();
 messageInput.focus();
-if (wakeWordEnabled) initWakeWord();
-
-// Update wake word button color
-btnWakeWord.style.color = wakeWordEnabled ? 'var(--color-primary)' : 'var(--color-muted)';
+initWakeWord();
 
 setInterval(loadStatus, MISAKA_CONFIG.POLL_INTERVAL_MS || 15000);
 setInterval(loadAlerts, MISAKA_CONFIG.ALERTS_POLL_INTERVAL_MS || 10000);
