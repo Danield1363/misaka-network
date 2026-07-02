@@ -1,6 +1,7 @@
 import logging
 from typing import Any
 from app.agents.conversation.agent import ConversationAgent
+from app.agents.calendar.agent import CalendarAgent
 
 logger = logging.getLogger(__name__)
 
@@ -8,7 +9,9 @@ logger = logging.getLogger(__name__)
 class Orchestrator:
     def __init__(self) -> None:
         self.agents: dict[str, Any] = {
-            "conversation": ConversationAgent()
+            "conversation": ConversationAgent(),
+            "calendar": CalendarAgent(),
+            "reminder": CalendarAgent()
         }
 
     async def execute(self, intent: str, message: str, context: dict[str, Any]) -> dict[str, Any]:
