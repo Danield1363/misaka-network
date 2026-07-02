@@ -7,6 +7,7 @@ from app.brain.planner import Planner
 from app.brain.orchestrator import Orchestrator
 from app.brain.personality import PersonalityEngine
 from app.memory.engine import MemoryEngine
+from app.persona.engine import PersonaEngine
 from app.core.config import get_settings
 
 logger = logging.getLogger(__name__)
@@ -18,6 +19,7 @@ class BrainEngine:
         self.orchestrator = Orchestrator()
         self.personality = PersonalityEngine()
         self.memory_engine = MemoryEngine()
+        self.persona_engine = PersonaEngine()
         self.settings = get_settings()
 
     async def process_message(
@@ -48,10 +50,12 @@ class BrainEngine:
         
         agent_result = await self.orchestrator.execute(intent, message, context)
         
+        formatted_response = self.persona_engine.format_response(agent_result["response"])
+        
         await self.memory_engine.save_interaction(
             conversation_id=conversation_id,
             user_message=message,
-            assistant_response=agent_result["response"],
+            assistant_response=formatted_response,
             metadata={"intent": intent}
         )
         
@@ -66,7 +70,7 @@ class BrainEngine:
         }
         
         return ChatResponse(
-            response=agent_result["response"],
+            response=formatted_response,
             agent=agent_result["agent"],
             model=agent_result.get("model"),
             execution_time=round(execution_time, 4),

@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Misaka Network</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="app-shell">
+        <header class="header">
+            <div class="header-left">
+                <div class="logo">
+                    <div class="logo-ring"></div>
+                    <span class="logo-text">Misaka</span>
+                </div>
+                <div class="status-indicator" id="statusIndicator">
+                    <span class="status-dot"></span>
+                    <span class="status-text">Online</span>
+                </div>
+            </div>
+            <div class="header-right">
+                <span class="version" id="version">v0.1 Genesis</span>
+            </div>
+        </header>
+
+        <main class="main-content">
+            <aside class="sidebar">
+                <div class="status-panel" id="statusPanel">
+                    <h3>System Status</h3>
+                    <div class="status-grid">
+                        <div class="status-item">
+                            <span class="status-label">Provider</span>
+                            <span class="status-value" id="llmProvider">-</span>
+                        </div>
+                        <div class="status-item">
+                            <span class="status-label">Memory</span>
+                            <span class="status-value" id="memoryStatus">-</span>
+                        </div>
+                        <div class="status-item">
+                            <span class="status-label">Calendar</span>
+                            <span class="status-value" id="calendarStatus">-</span>
+                        </div>
+                        <div class="status-item">
+                            <span class="status-label">Tools</span>
+                            <span class="status-value" id="toolsStatus">-</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="module-grid">
+                    <div class="module-card">
+                        <div class="module-icon">🧠</div>
+                        <span class="module-name">Brain</span>
+                        <span class="module-status online">Active</span>
+                    </div>
+                    <div class="module-card">
+                        <div class="module-icon">💾</div>
+                        <span class="module-name">Memory</span>
+                        <span class="module-status" id="memoryModule">-</span>
+                    </div>
+                    <div class="module-card">
+                        <div class="module-icon">✅</div>
+                        <span class="module-name">Tasks</span>
+                        <span class="module-status online">Active</span>
+                    </div>
+                    <div class="module-card">
+                        <div class="module-icon">📅</div>
+                        <span class="module-name">Calendar</span>
+                        <span class="module-status" id="calendarModule">-</span>
+                    </div>
+                    <div class="module-card">
+                        <div class="module-icon">🔧</div>
+                        <span class="module-name">Tools</span>
+                        <span class="module-status online">Active</span>
+                    </div>
+                    <div class="module-card">
+                        <div class="module-icon">⏰</div>
+                        <span class="module-name">Scheduler</span>
+                        <span class="module-status online">Active</span>
+                    </div>
+                    <div class="module-card">
+                        <div class="module-icon">🤖</div>
+                        <span class="module-name">LLM</span>
+                        <span class="module-status online" id="llmStatus">Active</span>
+                    </div>
+                </div>
+            </aside>
+
+            <section class="chat-section">
+                <div class="chat-header">
+                    <div class="persona-badge">
+                        <div class="persona-avatar">M</div>
+                        <div class="persona-info">
+                            <span class="persona-name">Misaka</span>
+                            <span class="persona-style">System Intelligence</span>
+                        </div>
+                    </div>
+                    <button class="btn-clear" id="btnClear">Clear</button>
+                </div>
+
+                <div class="chat-messages" id="chatMessages">
+                    <div class="message system">
+                        <div class="message-content">
+                            Sistema inicializado. Brain Engine online. Como posso ajudar?
+                        </div>
+                        <div class="message-suffix">diz Misaka Misaka.</div>
+                    </div>
+                </div>
+
+                <div class="chat-input">
+                    <input type="text" id="messageInput" placeholder="Digite sua mensagem..." autocomplete="off">
+                    <button id="btnSend" class="btn-send">Enviar</button>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <div class="typing-indicator" id="typingIndicator">
+        <span></span><span></span><span></span>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

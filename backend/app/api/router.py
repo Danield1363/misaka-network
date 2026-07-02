@@ -9,6 +9,8 @@ from app.api.reminders import router as reminders_router
 from app.api.scheduler import router as scheduler_router
 from app.api.tools import router as tools_router
 from app.api.actions import router as actions_router
+from app.api.persona import router as persona_router
+from app.api.ui_config import router as ui_config_router
 
 api_router = APIRouter()
 api_router.include_router(health_router)
@@ -21,3 +23,5 @@ api_router.include_router(reminders_router)
 api_router.include_router(scheduler_router)
 api_router.include_router(tools_router)
 api_router.include_router(actions_router)
+api_router.include_router(persona_router)
+api_router.include_router(ui_config_router)
