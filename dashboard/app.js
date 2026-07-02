@@ -1,6 +1,4 @@
-const API_BASE = window.location.hostname === 'localhost' 
-    ? 'http://127.0.0.1:8000/api' 
-    : '/api';
+const API_BASE = MISAKA_CONFIG.API_BASE_URL;
 
 const chatMessages = document.getElementById('chatMessages');
 const messageInput = document.getElementById('messageInput');
@@ -20,6 +18,7 @@ async function loadStatus() {
         document.getElementById('memoryStatus').textContent = data.memory_enabled ? 'Enabled' : 'Disabled';
         document.getElementById('calendarStatus').textContent = data.calendar_enabled ? 'Enabled' : 'Disabled';
         document.getElementById('toolsStatus').textContent = data.tools_enabled ? 'Enabled' : 'Disabled';
+        document.getElementById('notificationsStatus').textContent = data.notifications_enabled ? 'Enabled' : 'Disabled';
         
         document.getElementById('memoryModule').textContent = data.memory_enabled ? 'Active' : 'Disabled';
         document.getElementById('memoryModule').className = `module-status ${data.memory_enabled ? 'online' : ''}`;

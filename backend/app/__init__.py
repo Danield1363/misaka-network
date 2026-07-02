@@ -1,5 +1,6 @@
 import logging
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
@@ -30,6 +31,24 @@ def create_app() -> FastAPI:
         version=settings.VERSION,
         debug=settings.DEBUG,
         lifespan=lifespan
+    )
+    
+    allowed_origins = [
+        "http://localhost:3000",
+        "http://localhost:8000",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:8000",
+        "https://misaka-dashboard.pages.dev",
+        "https://*.pages.dev",
+        "https://*.northflank.app"
+    ]
+    
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=allowed_origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"]
     )
     
     app.include_router(root_router)
