@@ -101,6 +101,13 @@
                             <button class="btn-test-voice" id="btnTestVoice">Test Voice</button>
                             <button class="btn-stop-voice" id="btnStopVoice">Stop</button>
                         </div>
+                        <div class="wake-controls">
+                            <button class="btn-wake-word" id="btnWakeWord" type="button">Ativar escuta Misaka</button>
+                            <div class="wake-status" id="wakeStatus">Wake: desligado</div>
+                            <div class="wake-detail" id="wakeLastTranscript">Último ouvido: -</div>
+                            <div class="wake-detail" id="wakeLastCommand">Comando: -</div>
+                            <div class="wake-error" id="wakeError"></div>
+                        </div>
                     </div>
                 </div>
 
@@ -208,6 +215,11 @@
         <span>Misaka está processando</span>
     </div>
 
+    <div class="wake-indicator" id="wakeIndicator" style="display:none">
+        <div class="wake-pulse"></div>
+        <span>Wake: ouvindo por "Misaka"</span>
+    </div>
+
     <!-- Settings Drawer -->
     <div class="settings-overlay" id="settingsOverlay"></div>
     <div class="settings-drawer" id="settingsDrawer">
@@ -239,6 +251,12 @@
                     <span>Auto speak:</span>
                     <label class="toggle-label">
                         <input type="checkbox" id="settingsAutoSpeak">
+                    </label>
+                </div>
+                <div class="settings-item">
+                    <span>Wake word:</span>
+                    <label class="toggle-label">
+                        <input type="checkbox" id="wakeWordToggle">
                     </label>
                 </div>
             </div>
@@ -307,6 +325,7 @@
     <div class="toast-container" id="toastContainer"></div>
 
     <script src="config.js"></script>
+    <script src="voiceWake.js"></script>
     <script src="app.js"></script>
 </body>
 </html>

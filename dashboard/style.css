@@ -1170,6 +1170,51 @@ body {
     color: var(--color-accent);
 }
 
+.wake-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+    margin-top: 0.75rem;
+}
+
+.btn-wake-word {
+    padding: 0.55rem 0.75rem;
+    border: 1px solid var(--panel-border);
+    border-radius: 6px;
+    background: rgba(104, 213, 255, 0.08);
+    color: var(--color-primary);
+    cursor: pointer;
+    font-size: 0.82rem;
+}
+
+.btn-wake-word.active,
+.btn-wake-word[data-state="listening_for_wake"],
+.btn-wake-word[data-state="wake_detected"],
+.btn-wake-word[data-state="listening_for_command"] {
+    border-color: rgba(104, 213, 255, 0.45);
+    background: rgba(104, 213, 255, 0.16);
+}
+
+.wake-status,
+.wake-detail,
+.wake-error {
+    font-size: 0.75rem;
+    line-height: 1.35;
+}
+
+.wake-status {
+    color: var(--color-primary);
+}
+
+.wake-detail {
+    color: var(--color-muted);
+}
+
+.wake-error {
+    min-height: 1rem;
+    color: var(--color-warning);
+}
+
 /* ==================== Compact Mode ==================== */
 body.compact-mode .sidebar {
     width: 220px;

@@ -28,6 +28,11 @@ const btnCloseSettings = document.getElementById('btnCloseSettings');
 const toastContainer = document.getElementById('toastContainer');
 const modalOverlay = document.getElementById('modalOverlay');
 const wakeIndicator = document.getElementById('wakeIndicator');
+const wakeStatus = document.getElementById('wakeStatus');
+const wakeLastTranscript = document.getElementById('wakeLastTranscript');
+const wakeLastCommand = document.getElementById('wakeLastCommand');
+const wakeError = document.getElementById('wakeError');
+const wakeWordToggle = document.getElementById('wakeWordToggle');
 
 // State
 let conversationId = null;
@@ -45,11 +50,7 @@ let currentAlertFilter = 'all';
 let speaking = false;
 let currentUtterance = null;
 let pendingConfirmation = null;
-let wakeWordEnabled = localStorage.getItem('misaka_wake_word') === 'true';
-let wakeRecognition = null;
-let wakeWordActive = false;
-let wakeWordError = '';
-let wakeWordState = 'off';
+let voiceWakeController = null;
 let compactMode = localStorage.getItem('misaka_compact_mode') === 'true';
 let desktopNotificationsEnabled = localStorage.getItem('misaka_desktop_notifications') === 'true';
 
@@ -61,14 +62,6 @@ const APP_DISPLAY_NAMES = {
     discord: 'Discord',
     chrome: 'Chrome',
     edge: 'Edge',
-};
-
-const WAKE_STATE_LABELS = {
-    off: 'Wake word desligado',
-    listening: 'Wake word ouvindo',
-    wake_detected: 'Wake word detectada',
-    processing: 'Wake word processando comando',
-    error: 'Wake word com erro',
 };
 
 // ==================== Toast System ====================
@@ -419,12 +412,18 @@ async function handleClientAction(action) {
     return '';
 }
 // ==================== Chat Functions ====================
-async function sendMessage() {
-    const message = messageInput.value.trim();
+async function sendMessage(messageOverride = null, options = {}) {
+    const fromVoice = options.source === 'voice';
+    const message = typeof messageOverride === 'string'
+        ? messageOverride.trim()
+        : messageInput.value.trim();
     if (!message) return;
 
     addMessage(message, 'user');
-    messageInput.value = '';
+    if (!fromVoice) {
+        messageInput.value = '';
+        messageInput.style.height = 'auto';
+    }
     messageInput.style.height = 'auto';
 
     setCoreState('thinking');
@@ -456,7 +455,7 @@ async function sendMessage() {
         }
 
         // Auto speak - FIXED: always speak if enabled, not just first time
-        if (voiceEnabled && autoSpeak && assistantResponse) {
+        if (voiceEnabled && assistantResponse && (autoSpeak || fromVoice)) {
             speak(assistantResponse);
         }
 
@@ -670,160 +669,45 @@ async function loadSettingsInfo() {
 }
 
 // ==================== Wake Word ====================
-function speechRecognitionSupported() {
-    return 'webkitSpeechRecognition' in window || 'SpeechRecognition' in window;
-}
-
-function getSpeechRecognitionUnavailableMessage() {
-    if (window.misakaDesktop && window.misakaDesktop.isAvailable) {
-        return 'Reconhecimento de voz não disponível neste ambiente. Use Chrome/Edge ou o futuro modo nativo.';
-    }
-    return 'Reconhecimento de voz não disponível neste navegador. Use Chrome/Edge ou o futuro modo nativo.';
-}
-
-function setWakeWordState(state, errorMessage = '') {
-    wakeWordState = state;
-    wakeWordActive = state === 'listening' || state === 'wake_detected' || state === 'processing';
-    wakeWordError = errorMessage;
-    updateWakeWordUi();
-}
-
-function updateWakeWordUi() {
-    btnWakeWord.style.color = wakeWordActive ? 'var(--color-primary)' : 'var(--color-muted)';
-    btnWakeWord.dataset.state = wakeWordState;
-    btnWakeWord.title = wakeWordError || WAKE_STATE_LABELS[wakeWordState] || WAKE_STATE_LABELS.off;
-    const toggle = document.getElementById('wakeWordToggle');
-    if (toggle) toggle.checked = wakeWordEnabled;
-}
-
-function initWakeWord() {
-    if (!speechRecognitionSupported()) {
-        wakeWordEnabled = false;
-        localStorage.setItem('misaka_wake_word', 'false');
-        btnWakeWord.style.opacity = '0.4';
-        setWakeWordState('error', getSpeechRecognitionUnavailableMessage());
-        return;
-    }
-    btnWakeWord.style.opacity = '1';
-    setWakeWordState(wakeWordEnabled ? 'off' : 'off');
-    if (wakeWordEnabled) startWakeWord();
-}
-
-function extractWakeCommand(transcript) {
-    const match = transcript.match(/(?:^|\b)(?:ei\s+|ok\s+)?misaka[,.!?:;\s]*(.*)$/i);
-    return match ? match[1].trim() : '';
-}
-
-function submitWakeCommand(command) {
-    if (!command) return false;
-    messageInput.value = command;
-    setWakeWordState('processing');
-    sendMessage().finally(() => {
-        if (wakeWordEnabled && wakeWordState === 'processing') {
-            setWakeWordState('listening');
-        }
+function initVoiceWakeController() {
+    voiceWakeController = new VoiceWakeController({
+        elements: {
+            button: btnWakeWord,
+            toggle: wakeWordToggle,
+            status: wakeStatus,
+            lastTranscript: wakeLastTranscript,
+            lastCommand: wakeLastCommand,
+            error: wakeError,
+            indicator: wakeIndicator,
+        },
+        callbacks: {
+            sendVoiceCommand: (command) => sendMessage(command, { source: 'voice' }),
+            onStatusChange: (state, label) => {
+                const active = [
+                    'listening_for_wake',
+                    'wake_detected',
+                    'listening_for_command',
+                    'processing',
+                    'speaking',
+                ].includes(state);
+                btnWakeWord.style.opacity = state === 'unavailable' ? '0.5' : '1';
+                btnWakeWord.style.color = active ? 'var(--color-primary)' : 'var(--color-muted)';
+                if (state === 'error' || state === 'permission_needed' || state === 'unavailable') {
+                    showToast(label, 'warning');
+                }
+            },
+        },
     });
-    return true;
-}
+    voiceWakeController.init();
 
-function startWakeWord() {
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-        wakeWordEnabled = false;
-        localStorage.setItem('misaka_wake_word', 'false');
-        const message = getSpeechRecognitionUnavailableMessage();
-        setWakeWordState('error', message);
-        showToast(message, 'warning');
-        return;
-    }
-
-    if (wakeRecognition) stopWakeWord(false);
-
-    wakeRecognition = new SpeechRecognition();
-    wakeRecognition.continuous = true;
-    wakeRecognition.interimResults = true;
-    wakeRecognition.lang = 'pt-BR';
-
-    let wakeDetected = false;
-
-    wakeRecognition.onresult = (event) => {
-        const last = event.results[event.results.length - 1];
-        const transcript = last[0].transcript.toLowerCase().trim();
-        const inlineCommand = extractWakeCommand(transcript);
-
-        if (transcript.includes('misaka')) {
-            wakeDetected = true;
-            wakeIndicator.style.display = 'flex';
-            setWakeWordState('wake_detected');
-            setCoreState('thinking');
-
-            if (inlineCommand && last.isFinal && submitWakeCommand(inlineCommand)) {
-                setWakeWordState('processing');
-                wakeDetected = false;
-                wakeIndicator.style.display = 'none';
-                setCoreState(null);
+    if (window.misakaDesktop && window.misakaDesktop.onWakeWordSetEnabled) {
+        window.misakaDesktop.onWakeWordSetEnabled(({ enabled }) => {
+            const started = voiceWakeController.setEnabled(Boolean(enabled));
+            if (enabled && !started) {
+                showToast('Não consegui ativar a escuta Misaka.', 'warning');
             }
-            return;
-        }
-
-        if (wakeDetected && last.isFinal) {
-            if (submitWakeCommand(transcript)) {
-                setWakeWordState('processing');
-                wakeDetected = false;
-                wakeIndicator.style.display = 'none';
-                setCoreState(null);
-            }
-        }
-    };
-
-    wakeRecognition.onerror = (event) => {
-        if (event.error === 'no-speech') return;
-        const message = event.error === 'not-allowed' || event.error === 'service-not-allowed'
-            ? 'Permissão do microfone negada. Libere o microfone para usar a wake word.'
-            : `Wake word falhou: ${event.error}`;
-        setWakeWordState('error', message);
-        showToast(message, 'warning');
-    };
-
-    wakeRecognition.onend = () => {
-        setWakeWordState('off');
-        if (wakeWordEnabled) {
-            try {
-                wakeRecognition.start();
-                setWakeWordState('listening');
-            } catch (e) {
-                wakeWordEnabled = false;
-                localStorage.setItem('misaka_wake_word', 'false');
-                setWakeWordState('error', `Wake word falhou ao reiniciar: ${e.message}`);
-            }
-        }
-    };
-
-    try {
-        wakeRecognition.start();
-        setWakeWordState('listening');
-    } catch (e) {
-        wakeWordEnabled = false;
-        localStorage.setItem('misaka_wake_word', 'false');
-        const message = `Wake word falhou ao iniciar: ${e.message}`;
-        setWakeWordState('error', message);
-        showToast(message, 'warning');
+        });
     }
-}
-
-function stopWakeWord(updateEnabled = true) {
-    if (wakeRecognition) {
-        wakeRecognition.onend = null;
-        wakeRecognition.stop();
-        wakeRecognition = null;
-    }
-    if (updateEnabled) {
-        wakeWordEnabled = false;
-        localStorage.setItem('misaka_wake_word', 'false');
-    }
-    wakeIndicator.style.display = 'none';
-    setCoreState(null);
-    setWakeWordState('off');
 }
 // ==================== Confirmation Modal ====================
 function showConfirmation(title, message, payload) {
@@ -936,26 +820,15 @@ document.getElementById('btnRefreshAlerts').addEventListener('click', loadAlerts
 
 // Wake word
 btnWakeWord.addEventListener('click', () => {
-    if (!speechRecognitionSupported()) {
-        const message = getSpeechRecognitionUnavailableMessage();
-        wakeWordEnabled = false;
-        localStorage.setItem('misaka_wake_word', 'false');
-        setWakeWordState('error', message);
-        showToast(message, 'warning');
-        return;
+    if (!voiceWakeController) return;
+    const enabled = !voiceWakeController.enabled;
+    const started = voiceWakeController.setEnabled(enabled);
+    if (enabled && started) {
+        showToast('Wake word ativado. Diga "Misaka" para acionar.', 'info');
     }
-    wakeWordEnabled = !wakeWordEnabled;
-    localStorage.setItem('misaka_wake_word', wakeWordEnabled);
-    if (wakeWordEnabled) {
-        startWakeWord();
-        if (wakeWordState === 'listening') {
-            showToast('Wake word ativado. Diga "Misaka" para acionar.', 'info');
-        }
-    } else {
-        stopWakeWord();
+    if (!enabled) {
         showToast('Wake word desativado.', 'info');
     }
-    updateWakeWordUi();
 });
 // Settings toggles
 document.getElementById('speakSuffixToggle').addEventListener('change', (e) => {
@@ -983,23 +856,11 @@ document.getElementById('compactModeToggle').addEventListener('change', (e) => {
 });
 
 document.getElementById('wakeWordToggle').addEventListener('change', (e) => {
-    if (e.target.checked && !speechRecognitionSupported()) {
-        const message = getSpeechRecognitionUnavailableMessage();
+    if (!voiceWakeController) return;
+    const started = voiceWakeController.setEnabled(e.target.checked);
+    if (e.target.checked && !started) {
         e.target.checked = false;
-        wakeWordEnabled = false;
-        localStorage.setItem('misaka_wake_word', 'false');
-        setWakeWordState('error', message);
-        showToast(message, 'warning');
-        return;
     }
-    wakeWordEnabled = e.target.checked;
-    localStorage.setItem('misaka_wake_word', wakeWordEnabled);
-    if (wakeWordEnabled) {
-        startWakeWord();
-    } else {
-        stopWakeWord();
-    }
-    updateWakeWordUi();
 });
 document.getElementById('btnClearAllData').addEventListener('click', () => {
     if (confirm('Tem certeza? Isso vai limpar todos os dados locais.')) {
@@ -1036,7 +897,7 @@ document.getElementById('speakSuffixToggle').checked = localStorage.getItem('mis
 document.getElementById('desktopNotificationsToggle').checked = desktopNotificationsEnabled;
 document.getElementById('settingsHUDToggle').checked = hudMode;
 document.getElementById('compactModeToggle').checked = compactMode;
-document.getElementById('wakeWordToggle').checked = wakeWordEnabled;
+document.getElementById('wakeWordToggle').checked = localStorage.getItem('wake_word_enabled') === 'true';
 if (compactMode) document.body.classList.add('compact-mode');
 if (hudMode) document.body.classList.add('hud-mode');
 
@@ -1046,7 +907,7 @@ initVoiceControls();
 updateVoiceButton();
 updateHUDButton();
 messageInput.focus();
-initWakeWord();
+initVoiceWakeController();
 
 setInterval(loadStatus, MISAKA_CONFIG.POLL_INTERVAL_MS || 15000);
 setInterval(loadAlerts, MISAKA_CONFIG.ALERTS_POLL_INTERVAL_MS || 10000);

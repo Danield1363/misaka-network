@@ -12,6 +12,7 @@ Use this checklist before any merge or release.
 | `python -m py_compile backend/app/commands/confirmations.py` | OK | PASS |
 | `python -m py_compile` (all backend/app/*.py) | OK | PASS |
 | `node --check dashboard/app.js` | OK | PASS |
+| `node --check dashboard/voiceWake.js` | OK | PASS |
 | `node --check dashboard/config.js` | OK | PASS |
 | `node --check desktop/main.js` | OK | PASS |
 | `node --check desktop/preload.js` | OK | PASS |
@@ -39,6 +40,7 @@ Use this checklist before any merge or release.
 | Devices | `test_devices` | register, heartbeat, list | PASS |
 | Desktop package | `test_desktop_package` | extraResources includes dashboard | PASS |
 | Full suite | `python -m pytest` | 305 passed | PASS |
+| Voice wake extraction | `node dashboard/voiceWake.test.js` | wake phrase + two-step command flow | PASS |
 
 ## Operational Actions
 
@@ -93,3 +95,16 @@ Use this checklist before any merge or release.
 | App launcher uses allowlist | WINDOWS_APP_LAUNCHERS | PASS |
 | IPC uses contextIsolation | preload.js contextBridge | PASS |
 | Error messages safe | No internals leaked | PASS |
+
+## Voice Wake
+
+| Check | Method | Expected | Status |
+|-------|--------|----------|--------|
+| Wake controller syntax | `node --check dashboard/voiceWake.js` | OK | PASS |
+| Wake phrase extraction | `node dashboard/voiceWake.test.js` | "Misaka, abra..." extracts command | PASS |
+| Two-step command flow | `node dashboard/voiceWake.test.js` | "Misaka" then command sends command | PASS |
+| Missing SpeechRecognition | Code path | Shows unavailable/error state, not listening | PASS |
+| Microphone denied | Code path | Shows "Permissão de microfone negada." | PASS |
+| Electron media permission | Code review | `session.defaultSession.setPermissionRequestHandler` allows media/microphone | PASS |
+| Tray wake controls | Code review | Tray sends wake enable/disable event to renderer | PASS |
+| Native wake fallback | `docs/VOICE_WAKE_NATIVE_PLAN.md` | Documents future native mode and limitations | PASS |
