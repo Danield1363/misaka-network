@@ -89,3 +89,43 @@ def test_chat_conversation_not_command(client):
     data = response.json()
     assert data["metadata"]["intent"] != "command"
     assert "agent" in data
+
+
+def test_chat_open_youtube_returns_client_action(client):
+    response = client.post("/api/chat", json={"message": "abra o youtube"})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["metadata"]["intent"] == "command"
+    assert data["metadata"]["command"] == "open_youtube"
+    assert "client_action" in data["metadata"]
+    assert data["metadata"]["client_action"]["type"] == "open_url"
+    assert "youtube.com" in data["metadata"]["client_action"]["url"]
+
+
+def test_chat_open_discord_returns_client_action(client):
+    response = client.post("/api/chat", json={"message": "abra o discord"})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["metadata"]["intent"] == "command"
+    assert data["metadata"]["command"] == "open_app"
+    assert "client_action" in data["metadata"]
+    assert data["metadata"]["client_action"]["type"] == "open_app"
+    assert data["metadata"]["client_action"]["app"] == "discord"
+
+
+def test_chat_open_vscode_returns_client_action(client):
+    response = client.post("/api/chat", json={"message": "abra o vs code"})
+    assert response.status_code == 200
+    data = response.json()
+    assert "client_action" in data["metadata"]
+    assert data["metadata"]["client_action"]["type"] == "open_app"
+    assert data["metadata"]["client_action"]["app"] == "vscode"
+
+
+def test_chat_search_youtube_returns_client_action(client):
+    response = client.post("/api/chat", json={"message": "canal do alanzoka"})
+    assert response.status_code == 200
+    data = response.json()
+    assert "client_action" in data["metadata"]
+    assert data["metadata"]["client_action"]["type"] == "open_url"
+    assert "alanzoka" in data["metadata"]["client_action"]["url"]

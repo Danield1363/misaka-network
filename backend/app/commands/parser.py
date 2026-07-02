@@ -30,10 +30,50 @@ def detect_intent(message: str) -> Intent | None:
                         tool_name=config.get("tool_name"),
                         requires_confirmation=config.get("requires_confirmation", False),
                         response_message=config.get("response_message", ""),
-                        parameters=config.get("parameters", {})
+                        parameters=dict(config.get("parameters", {}))
                     )
 
     return best_match
+
+
+def extract_url(message: str) -> str | None:
+    url_pattern = r'(https?://[^\s]+)'
+    match = re.search(url_pattern, message)
+    if match:
+        return match.group(1)
+    return None
+
+
+def extract_youtube_search(message: str) -> str | None:
+    patterns = [
+        r"canal\s+do\s+(.+?)(?:\s+no\s+youtube|\s*$)",
+        r"canal\s+da\s+(.+?)(?:\s+no\s+youtube|\s*$)",
+        r"canal\s+de\s+(.+?)(?:\s+no\s+youtube|\s*$)",
+        r"pesquise\s+(?:no\s+youtube\s+)?(?:por\s+)?(.+?)(?:\s+no\s+youtube|\s*$)",
+        r"buscar\s+(?:no\s+youtube\s+)?(?:por\s+)?(.+?)(?:\s+no\s+youtube|\s*$)",
+        r"procure\s+(?:no\s+youtube\s+)?(?:por\s+)?(.+?)(?:\s+no\s+youtube|\s*$)",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, message.lower())
+        if match:
+            query = match.group(1).strip()
+            if query:
+                return f"https://www.youtube.com/results?search_query={query.replace(' ', '+')}"
+    return None
+
+
+def extract_search_query(message: str) -> str:
+    patterns = [
+        r"pesquise\s+por\s+(.+)",
+        r"pesquisar\s+(.+)",
+        r"procure\s+por\s+(.+)",
+        r"busque\s+por\s+(.+)",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, message.lower())
+        if match:
+            return match.group(1).strip()
+    return ""
 
 
 def extract_task_description(message: str) -> str:
@@ -83,31 +123,20 @@ def extract_app_name(message: str) -> str:
         "vscode": "vscode",
         "vs code": "vscode",
         "explorer": "explorer",
-        "youtube": "youtube",
-        "chrome": "browser",
-        "firefox": "browser",
-        "edge": "browser",
         "navegador": "browser",
+        "chrome": "chrome",
+        "firefox": "firefox",
+        "edge": "edge",
         "notepad": "notepad",
+        "bloco de notas": "notepad",
+        "calculador": "calculator",
+        "calculator": "calculator",
         "terminal": "terminal",
-        "music": "music",
+        "spotify": "spotify",
+        "music": "spotify",
     }
     lower = message.lower()
     for key, value in app_map.items():
         if key in lower:
             return value
     return "browser"
-
-
-def extract_search_query(message: str) -> str:
-    patterns = [
-        r"pesquise\s+por\s+(.+)",
-        r"pesquisar\s+(.+)",
-        r"procure\s+por\s+(.+)",
-        r"busque\s+por\s+(.+)",
-    ]
-    for pattern in patterns:
-        match = re.search(pattern, message.lower())
-        if match:
-            return match.group(1).strip()
-    return ""

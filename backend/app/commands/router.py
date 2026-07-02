@@ -2,6 +2,8 @@ import logging
 from typing import Any
 from app.commands.parser import (
     detect_intent,
+    extract_url,
+    extract_youtube_search,
     extract_task_description,
     extract_reminder_text,
     extract_memory_content,
@@ -12,6 +14,42 @@ from app.commands.intents import Intent
 from app.tools.executor import ToolExecutor
 
 logger = logging.getLogger(__name__)
+
+
+def build_client_action(intent_name: str, parameters: dict, message: str) -> dict[str, Any] | None:
+    if intent_name in ("open_youtube", "open_url_site"):
+        url = parameters.get("url") or extract_url(message) or "https://www.youtube.com"
+        return {"type": "open_url", "target": "desktop", "url": url}
+
+    if intent_name == "search_youtube":
+        url = extract_youtube_search(message)
+        if not url:
+            query = extract_search_query(message)
+            url = f"https://www.youtube.com/results?search_query={query.replace(' ', '+')}" if query else "https://www.youtube.com"
+        return {"type": "open_url", "target": "desktop", "url": url}
+
+    if intent_name == "open_app":
+        app = extract_app_name(message)
+        return {"type": "open_app", "target": "desktop", "app": app}
+
+    if intent_name == "open_browser":
+        return {"type": "open_app", "target": "desktop", "app": "browser"}
+
+    if intent_name == "search_web":
+        query = extract_search_query(message)
+        url = f"https://www.google.com/search?q={query.replace(' ', '+')}" if query else "https://www.google.com"
+        return {"type": "open_url", "target": "desktop", "url": url}
+
+    if intent_name == "pc_status":
+        return {"type": "get_system_status", "target": "desktop"}
+
+    if intent_name == "android_vibrate":
+        return {"type": "vibrate", "target": "android"}
+
+    if intent_name == "android_toast":
+        return {"type": "show_toast", "target": "android", "message": "Alerta do Misaka"}
+
+    return None
 
 
 class CommandRouter:
@@ -67,13 +105,15 @@ class CommandRouter:
         elif intent.tool_name == "desktop.search_web":
             input_data["query"] = extract_search_query(message)
 
+        client_action = build_client_action(intent.name, input_data, message)
+
         try:
             result = await self.executor.execute(
                 tool_name=intent.tool_name,
                 input_data=input_data,
                 context=context or {},
             )
-            return {
+            response = {
                 "type": "command_executed",
                 "intent": intent.name,
                 "tool_name": intent.tool_name,
@@ -82,6 +122,9 @@ class CommandRouter:
                 "response_message": intent.response_message,
                 "metadata": result.get("metadata", {}),
             }
+            if client_action:
+                response["client_action"] = client_action
+            return response
         except Exception as e:
             logger.error(f"Command execution error: {e}")
             return {

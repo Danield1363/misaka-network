@@ -283,8 +283,11 @@ function setupIPC() {
     });
 
     ipcMain.handle('open-url', (event, { url }) => {
-        shell.openExternal(url);
-        return { success: true };
+        if (typeof url === 'string' && (url.startsWith('http://') || url.startsWith('https://'))) {
+            shell.openExternal(url);
+            return { success: true, url };
+        }
+        return { success: false, error: 'Invalid URL. Must start with http:// or https://' };
     });
 
     ipcMain.handle('get-system-status', () => {

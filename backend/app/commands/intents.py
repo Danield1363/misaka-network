@@ -48,7 +48,7 @@ INTENT_MAP = {
         "tool_name": "ui.set_hud_mode",
         "parameters": {"enabled": True},
         "requires_confirmation": False,
-        "response_message": "Modo HUD ativado!"
+        "response_message": "Modo HUD ativado, diz Misaka Misaka."
     },
     "hud_off": {
         "keywords": [
@@ -58,16 +58,16 @@ INTENT_MAP = {
         "tool_name": "ui.set_hud_mode",
         "parameters": {"enabled": False},
         "requires_confirmation": False,
-        "response_message": "Modo HUD desativado."
+        "response_message": "Modo HUD desativado, diz Misaka Misaka."
     },
     "open_settings": {
         "keywords": [
             "abra configurações", "abrir configurações", "mostrar configurações",
-            "configurações", "settings", "abra as configs"
+            "configurações", "abra as configs"
         ],
         "tool_name": "ui.open_settings",
         "requires_confirmation": False,
-        "response_message": "Abrindo configurações..."
+        "response_message": "Abrindo configurações, diz Misaka Misaka."
     },
     "clear_chat": {
         "keywords": [
@@ -76,7 +76,7 @@ INTENT_MAP = {
         ],
         "tool_name": "ui.clear_chat",
         "requires_confirmation": False,
-        "response_message": "Chat limpo!"
+        "response_message": "Chat limpo, diz Misaka Misaka."
     },
     "voice_on": {
         "keywords": [
@@ -86,7 +86,7 @@ INTENT_MAP = {
         "tool_name": "ui.set_voice_enabled",
         "parameters": {"enabled": True},
         "requires_confirmation": False,
-        "response_message": "Voz ativada!"
+        "response_message": "Voz ativada, diz Misaka Misaka."
     },
     "voice_off": {
         "keywords": [
@@ -96,7 +96,7 @@ INTENT_MAP = {
         "tool_name": "ui.set_voice_enabled",
         "parameters": {"enabled": False},
         "requires_confirmation": False,
-        "response_message": "Voz desativada."
+        "response_message": "Voz desativada, diz Misaka Misaka."
     },
     "voice_female": {
         "keywords": [
@@ -106,36 +106,59 @@ INTENT_MAP = {
         "tool_name": "ui.set_voice_profile",
         "parameters": {"profile": "feminine"},
         "requires_confirmation": False,
-        "response_message": "Perfil de voz feminina selecionado!"
+        "response_message": "Perfil de voz feminina selecionado, diz Misaka Misaka."
     },
-    "open_browser": {
+    "search_youtube": {
         "keywords": [
-            "abra o navegador", "abrir navegador", "abre o chrome",
-            "abra o chrome", "abra o firefox", "abra o edge"
+            "pesquise no youtube", "buscar no youtube", "procure no youtube",
+            "youtube pesquisar", "canal do", "canal da", "canal de",
+            "abrir canal"
         ],
-        "tool_name": "desktop.open_app",
-        "parameters": {"app": "browser"},
-        "requires_confirmation": False,
-        "response_message": "Abrindo navegador..."
-    },
-    "open_app": {
-        "keywords": [
-            "abra o discord", "abra o vscode", "abra o vs code",
-            "abra o explorer", "abra o youtube", "abra o music",
-            "abra o notepad", "abra o terminal"
-        ],
-        "tool_name": "desktop.open_app",
+        "tool_name": "desktop.search_web",
         "requires_confirmation": False,
         "response_message": ""
     },
-    "open_url": {
+    "open_youtube": {
         "keywords": [
-            "abra o youtube", "abra o google", "abra o github",
-            "abra o site", "abra a página"
+            "abra o youtube", "abrir youtube", "abre o youtube",
+            "youtube", "abra youtube"
+        ],
+        "tool_name": "desktop.open_url",
+        "parameters": {"url": "https://www.youtube.com"},
+        "requires_confirmation": False,
+        "response_message": "Abrindo YouTube, diz Misaka Misaka."
+    },
+    "open_url_site": {
+        "keywords": [
+            "abra o google", "abra o github", "abra o site",
+            "abra a página", "abra o gmail", "abra o maps",
+            "abra o drive", "abra o notion", "abra o figma"
         ],
         "tool_name": "desktop.open_url",
         "requires_confirmation": False,
         "response_message": ""
+    },
+    "open_app": {
+        "keywords": [
+            "abra o discord", "abra o vscode", "abra o vs code",
+            "abra o explorer", "abra o notepad", "abra o terminal",
+            "abra o calculador", "abra o bloco de notas",
+            "abra o music", "abra o spotify"
+        ],
+        "tool_name": "desktop.open_app",
+        "requires_confirmation": False,
+        "response_message": ""
+    },
+    "open_browser": {
+        "keywords": [
+            "abra o navegador", "abrir navegador", "abre o chrome",
+            "abra o chrome", "abra o firefox", "abra o edge",
+            "abra o navegador padrão"
+        ],
+        "tool_name": "desktop.open_app",
+        "parameters": {"app": "browser"},
+        "requires_confirmation": False,
+        "response_message": "Abrindo navegador, diz Misaka Misaka."
     },
     "search_web": {
         "keywords": [
@@ -162,7 +185,7 @@ INTENT_MAP = {
         ],
         "tool_name": "android.vibrate",
         "requires_confirmation": False,
-        "response_message": "Comando de vibração enviado ao celular!"
+        "response_message": "Comando de vibração enviado ao celular, diz Misaka Misaka."
     },
     "android_open_app": {
         "keywords": [
@@ -180,7 +203,7 @@ INTENT_MAP = {
         ],
         "tool_name": "android.show_toast",
         "requires_confirmation": False,
-        "response_message": "Alerta enviado ao celular!"
+        "response_message": "Alerta enviado ao celular, diz Misaka Misaka."
     },
     "android_status": {
         "keywords": [

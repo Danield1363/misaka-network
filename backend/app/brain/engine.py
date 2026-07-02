@@ -101,6 +101,8 @@ class BrainEngine:
                     "memories_used": len(memories),
                     **result.get("metadata", {}),
                 }
+                if result.get("client_action"):
+                    response_metadata["client_action"] = result["client_action"]
 
                 return ChatResponse(
                     response=formatted_response,

@@ -309,6 +309,54 @@ function addMessage(text, type) {
     lastResponse = text;
 }
 
+// ==================== Client Action Handler ====================
+function handleClientAction(action) {
+    if (!action || !action.type) return;
+
+    const isDesktop = window.misakaDesktop && window.misakaDesktop.isAvailable;
+
+    if (action.type === 'open_url') {
+        if (isDesktop && window.misakaDesktop.openUrl) {
+            window.misakaDesktop.openUrl(action.url);
+        } else {
+            try {
+                window.open(action.url, '_blank');
+            } catch (e) {
+                showToast('Popup bloqueado. Permita popups para este site.', 'warning');
+            }
+        }
+        return;
+    }
+
+    if (action.type === 'open_app') {
+        if (isDesktop && window.misakaDesktop.openApp) {
+            window.misakaDesktop.openApp(action.app);
+        } else {
+            showToast('Para abrir apps do PC, use o app desktop da Misaka.', 'info');
+        }
+        return;
+    }
+
+    if (action.type === 'get_system_status') {
+        if (isDesktop && window.misakaDesktop.getSystemStatus) {
+            window.misakaDesktop.getSystemStatus().then(status => {
+                showToast(`PC: ${status.platform} | RAM: ${Math.round(status.memory?.heapUsed / 1024 / 1024 || 0)}MB`, 'info');
+            });
+        }
+        return;
+    }
+
+    if (action.type === 'vibrate') {
+        showToast('Comando de vibração enviado ao celular.', 'info');
+        return;
+    }
+
+    if (action.type === 'show_toast') {
+        showToast(action.message || 'Alerta do Misaka', 'info');
+        return;
+    }
+}
+
 // ==================== Chat Functions ====================
 async function sendMessage() {
     const message = messageInput.value.trim();
@@ -380,6 +428,11 @@ async function sendMessage() {
             if (effect === 'open_settings') {
                 openSettings();
             }
+        }
+
+        // Execute client actions (open apps, URLs, etc.)
+        if (data.metadata && data.metadata.client_action) {
+            handleClientAction(data.metadata.client_action);
         }
 
         setTimeout(() => setCoreState(null), 3000);
