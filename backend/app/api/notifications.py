@@ -18,7 +18,7 @@ async def ingest_notification(
     x_misaka_token: str | None = Header(None)
 ) -> NotificationIngestResponse:
     if not notification_bridge.verify_token(x_misaka_token):
-        raise HTTPException(status_code=401, detail="Invalid token")
+        raise HTTPException(status_code=401, detail="Invalid or missing token")
 
     result = await notification_bridge.ingest(data.model_dump())
 
@@ -43,14 +43,14 @@ async def ingest_notification(
     return NotificationIngestResponse(
         importance=result.get("importance", "normal"),
         should_alert=result.get("should_alert", False),
-        summary="Notification received",
-        category="general",
-        is_sensitive=False
+        summary=result.get("summary", "Notification received"),
+        category=result.get("category", "general"),
+        is_sensitive=result.get("is_sensitive", False)
     )
 
 
 @router.get("/notifications/bridge/status")
-async def bridge_status() -> dict[str, str | int | None]:
+async def bridge_status() -> dict[str, str | int | None | bool]:
     return notification_bridge.get_status()
 
 

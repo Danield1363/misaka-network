@@ -18,9 +18,12 @@ class NotificationBridge:
         self._connected_devices: set[str] = set()
 
     def verify_token(self, token: str | None) -> bool:
-        if not self.settings.NOTIFICATION_INGEST_TOKEN:
-            return True
-        return token == self.settings.NOTIFICATION_INGEST_TOKEN
+        if self.settings.ENVIRONMENT == "production":
+            if not self.settings.NOTIFICATION_INGEST_TOKEN:
+                logger.error("NOTIFICATION_INGEST_TOKEN not configured in production")
+                return False
+            return token == self.settings.NOTIFICATION_INGEST_TOKEN
+        return True
 
     async def ingest(self, data: dict[str, Any]) -> dict[str, Any]:
         device_id = data.get("device_id", "unknown")
@@ -51,7 +54,10 @@ class NotificationBridge:
             "notification_id": None,
             "duplicate": False,
             "importance": result.get("importance"),
-            "should_alert": result.get("should_alert")
+            "should_alert": result.get("should_alert"),
+            "summary": result.get("summary"),
+            "category": result.get("category"),
+            "is_sensitive": result.get("is_sensitive")
         }
 
     def get_status(self) -> dict[str, Any]:
@@ -59,7 +65,8 @@ class NotificationBridge:
             "bridge_status": "online",
             "connected_devices": len(self._connected_devices),
             "last_notification": self._last_notification,
-            "notifications_today": self._notifications_today
+            "notifications_today": self._notifications_today,
+            "token_required": self.settings.ENVIRONMENT == "production"
         }
 
 

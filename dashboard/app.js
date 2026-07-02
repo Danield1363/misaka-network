@@ -105,20 +105,30 @@ async function loadAlerts() {
         const alertsContainer = document.getElementById('alertsContainer');
         if (!alertsContainer) return;
         
-        alertsContainer.innerHTML = '';
+        alertsContainer.textContent = '';
         
         if (data.alerts && data.alerts.length > 0) {
             data.alerts.slice(0, 5).forEach(alert => {
                 const alertDiv = document.createElement('div');
                 alertDiv.className = `alert-item alert-${alert.priority}`;
-                alertDiv.innerHTML = `
-                    <span class="alert-title">${alert.title}</span>
-                    <span class="alert-message">${alert.message}</span>
-                `;
+                
+                const titleSpan = document.createElement('span');
+                titleSpan.className = 'alert-title';
+                titleSpan.textContent = alert.title;
+                alertDiv.appendChild(titleSpan);
+                
+                const messageSpan = document.createElement('span');
+                messageSpan.className = 'alert-message';
+                messageSpan.textContent = alert.message;
+                alertDiv.appendChild(messageSpan);
+                
                 alertsContainer.appendChild(alertDiv);
             });
         } else {
-            alertsContainer.innerHTML = '<div class="alert-empty">No alerts</div>';
+            const emptyDiv = document.createElement('div');
+            emptyDiv.className = 'alert-empty';
+            emptyDiv.textContent = 'No alerts';
+            alertsContainer.appendChild(emptyDiv);
         }
     } catch (error) {
         console.error('Failed to load alerts:', error);
