@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     
     LLM_PROVIDER: str = "mock"
     GEMINI_API_KEY: str = ""
-    GEMINI_MODEL: str = "gemini-pro"
+    GEMINI_MODEL: str = "gemini-2.5-pro"
     
     SUPABASE_URL: str = ""
     SUPABASE_SERVICE_ROLE_KEY: str = ""
