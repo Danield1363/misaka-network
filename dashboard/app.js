@@ -644,14 +644,13 @@ async function loadSettingsInfo() {
 
 // ==================== Wake Word ====================
 function initWakeWord() {
-    if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
-        btnWakeWord.style.display = 'none';
-        return;
+    const supported = 'webkitSpeechRecognition' in window || 'SpeechRecognition' in window;
+    if (!supported) {
+        btnWakeWord.title = 'Reconhecimento de voz não disponível neste navegador. Use Chrome ou Edge.';
+        btnWakeWord.style.opacity = '0.4';
     }
-
     if (!wakeWordEnabled) return;
-
-    startWakeWord();
+    if (supported) startWakeWord();
 }
 
 function startWakeWord() {
@@ -831,6 +830,11 @@ document.getElementById('btnRefreshAlerts').addEventListener('click', loadAlerts
 
 // Wake word
 btnWakeWord.addEventListener('click', () => {
+    const supported = 'webkitSpeechRecognition' in window || 'SpeechRecognition' in window;
+    if (!supported) {
+        showToast('Reconhecimento de voz não disponível neste navegador. Use Chrome ou Edge.', 'warning');
+        return;
+    }
     wakeWordEnabled = !wakeWordEnabled;
     localStorage.setItem('misaka_wake_word', wakeWordEnabled);
     if (wakeWordEnabled) {
