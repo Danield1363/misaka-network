@@ -1,72 +1,76 @@
-# Deploy Guide - Misaka Core
+# Deployment Guide — Misaka v0.3
 
-## Local Development
+## Backend (Northflank / Docker)
 
+### Local Development
 ```bash
 cd backend
+cp .env.example .env
+# Edit .env with your keys
 pip install -r requirements.txt
-uvicorn main:app --reload
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-API available at: http://127.0.0.1:8000
-Docs: http://127.0.0.1:8000/docs
-
-## Docker
-
+### Docker
 ```bash
 cd backend
-docker build -t misaka-core .
-docker run -p 8000:8000 misaka-core
+docker build -t misaka-backend .
+docker run -p 8000:8000 --env-file .env misaka-backend
 ```
 
-## Northflank Deployment
+### Northflank
+1. Connect GitHub repository
+2. Set buildpack to Python
+3. Add environment variables in Northflank dashboard
+4. Deploy
 
-### Configuration
+## Dashboard (Cloudflare Pages)
 
-- **Build context:** `/backend`
-- **Dockerfile location:** `/Dockerfile`
-- **Port:** `8000`
-
-### Environment Variables
-
-Set these in Northflank:
-
-```
-ENVIRONMENT=production
-LLM_PROVIDER=gemini
-GEMINI_API_KEY=your-api-key
-GEMINI_MODEL=gemini-2.5-pro
-MEMORY_ENABLED=false
-LOG_LEVEL=INFO
+### Local
+```bash
+cd dashboard
+python -m http.server 3000
 ```
 
-### Important Notes
+### Cloudflare Pages
+1. Connect GitHub repository
+2. Build command: (none — static files)
+3. Output directory: `dashboard`
+4. Deploy
 
-- **Never commit .env files** to the repository
-- **Never log secrets** (API keys, service role keys)
-- **MEMORY_ENABLED=false** by default (no Supabase required)
-- **LLM_PROVIDER=mock** for development, **gemini** for production
+## Desktop App
 
-## Endpoints
+### Development
+```bash
+cd desktop
+npm install
+npm start
+```
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/` | GET | Root endpoint |
-| `/api/health` | GET | Health check |
-| `/api/status` | GET | System status |
-| `/api/chat` | POST | Chat with Misaka |
-| `/docs` | GET | Swagger UI |
+### Build .exe
+```bash
+cd desktop
+npm install
+npm run dist
+# Output: desktop/dist/
+```
 
-## Troubleshooting
+## Environment Variables
 
-### Gemini not working
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `GEMINI_API_KEY` | For Gemini | Gemini API key |
+| `SUPABASE_URL` | For DB features | Supabase project URL |
+| `SUPABASE_SERVICE_ROLE_KEY` | For DB features | Supabase service key |
+| `NOTIFICATION_INGEST_TOKEN` | For bridge | Bridge auth token |
+| `MISAKA_API_BASE_URL` | Desktop only | Backend API URL |
+| `MISAKA_DASHBOARD_URL` | Desktop only | Dashboard URL |
 
-1. Verify `LLM_PROVIDER=gemini`
-2. Verify `GEMINI_API_KEY` is set
-3. Check logs for errors
+## CORS Configuration
 
-### Memory/Calendar disabled
-
-Set `MEMORY_ENABLED=true` and configure Supabase:
-- `SUPABASE_URL`
-- `SUPABASE_SERVICE_ROLE_KEY`
+Backend allows requests from:
+- `http://localhost:3000`
+- `http://localhost:8000`
+- `https://*.pages.dev`
+- `https://*.code.run`
+- `https://*.northflank.app`

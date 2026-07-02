@@ -1,35 +1,46 @@
-# Voice Mode - Misaka Network
+# Voice Mode — Misaka v0.3
 
-## Overview
+## Features
 
-A Misaka pode falar respostas em voz alta usando SpeechSynthesis do navegador.
+- **Auto-speak** — Speaks every assistant response when enabled
+- **Voice presets** — Pre-configured voice profiles
+- **Rate/pitch control** — Adjustable speech speed and tone
+- **Speak suffix** — "diz Misaka Misaka." appended to speech
+- **Stop button** — Immediately stops current speech
+- **Test button** — Tests voice with sample phrase
+- **Wake word** — Experimental voice activation
 
-## Funcionalidades
+## Voice Presets
 
-- Toggle voice on/off
-- Botão "falar última resposta"
-- Voz em português (pt-BR)
-- Velocidade e pitch configuráveis
+| Preset | Description |
+|--------|-------------|
+| Misaka BR Feminina | pt-BR female voice, pitch 1.15, rate 1.0 |
+| Misaka Suave | Softer tone, pitch 1.1, rate 0.9 |
+| Misaka Sistema | Clear system voice, pitch 1.0, rate 1.0 |
+| Misaka Rápida | Faster speech, pitch 1.0, rate 1.2 |
+| Sistema padrão | Browser default voice |
 
-## Como usar
+## Configuration
 
-1. Clique no ícone 🔊 no header para ativar/desativar voz
-2. Clique no botão 🔊 ao lado do chat para falar a última resposta
-3. As respostas serão faladas automaticamente quando a voz está ativa
+Settings are persisted in localStorage:
+- `misaka_voice_enabled` — Voice on/off
+- `misaka_auto_speak` — Auto-speak on/off
+- `misaka_voice_name` — Selected voice name
+- `misaka_voice_rate` — Speech rate (0.5–2.0)
+- `misaka_voice_pitch` — Speech pitch (0.5–2.0)
+- `misaka_speak_suffix` — Suffix on/off
 
-## Configuração
+## Technical Details
 
-GET /api/voice-config retorna:
-```json
-{
-  "voice_enabled": true,
-  "auto_speak": false,
-  "speak_suffix_enabled": true,
-  "rate": 1.0,
-  "pitch": 1.0
-}
-```
+- Uses Web Speech API (`SpeechSynthesis`)
+- Each response creates a new `SpeechSynthesisUtterance`
+- Previous speech is cancelled before new speech starts
+- Voice list loaded asynchronously via `onvoiceschanged`
+- Desktop Electron supports voice via Chromium's implementation
 
-## Preferências
+## Troubleshooting
 
-A preferência de voz é salva localmente no navegador.
+- **No voice**: Check if browser supports Web Speech API
+- **Voice stops after first response**: Fixed in v0.3 — auto-speak now triggers on every response
+- **Wrong voice**: Re-select voice in settings panel
+- **Voice too fast/slow**: Adjust rate slider

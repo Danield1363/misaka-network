@@ -171,10 +171,6 @@ function createWindow() {
         }
     });
 
-    mainWindow.on('tray-clicked', () => {
-        mainWindow.show();
-    });
-
     createTray();
     setupIPC();
 }
