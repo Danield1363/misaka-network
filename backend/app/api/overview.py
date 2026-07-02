@@ -1,9 +1,12 @@
+import logging
 from fastapi import APIRouter
 from app.core.config import get_settings
 from app.memory.engine import MemoryEngine
 from app.calendar.engine import CalendarEngine
 from app.notifications.engine import NotificationEngine
 from app.bridge.engine import notification_bridge
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -16,6 +19,16 @@ async def overview() -> dict[str, str | bool | int]:
     notification_engine = NotificationEngine()
     bridge_status = notification_bridge.get_status()
 
+    pending_alerts = 0
+    critical_alerts = 0
+
+    try:
+        alerts = await notification_engine.list_important_alerts("pending")
+        pending_alerts = len(alerts)
+        critical_alerts = len([a for a in alerts if a.get("priority") == "critical"])
+    except Exception as e:
+        logger.error(f"Failed to count alerts: {e}")
+
     return {
         "assistant": "Misaka",
         "status": "online",
@@ -27,7 +40,7 @@ async def overview() -> dict[str, str | bool | int]:
         "calendar_enabled": calendar_engine.enabled,
         "notifications_enabled": notification_engine.enabled,
         "desktop_enabled": True,
-        "pending_alerts": bridge_status.get("notifications_today", 0),
-        "critical_alerts": 0,
+        "pending_alerts": pending_alerts,
+        "critical_alerts": critical_alerts,
         "tools_enabled": True
     }

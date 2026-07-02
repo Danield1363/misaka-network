@@ -30,7 +30,7 @@ async function loadStatus() {
     try {
         const response = await fetch(`${API_BASE}/overview`);
         const data = await response.json();
-        
+
         document.getElementById('version').textContent = `v${data.version}`;
         document.getElementById('llmProvider').textContent = data.llm_provider;
         document.getElementById('providerBadge').textContent = data.llm_provider;
@@ -38,13 +38,13 @@ async function loadStatus() {
         document.getElementById('calendarStatus').textContent = data.calendar_enabled ? 'Enabled' : 'Disabled';
         document.getElementById('toolsStatus').textContent = data.tools_enabled ? 'Enabled' : 'Disabled';
         document.getElementById('notificationsStatus').textContent = data.notifications_enabled ? 'Enabled' : 'Disabled';
-        
+
         document.getElementById('memoryModule').textContent = data.memory_enabled ? 'Active' : 'Disabled';
         document.getElementById('memoryModule').className = `module-status ${data.memory_enabled ? 'online' : ''}`;
-        
+
         document.getElementById('calendarModule').textContent = data.calendar_enabled ? 'Active' : 'Disabled';
         document.getElementById('calendarModule').className = `module-status ${data.calendar_enabled ? 'online' : ''}`;
-        
+
         document.getElementById('llmStatus').textContent = data.llm_provider === 'mock' ? 'Mock' : 'Active';
     } catch (error) {
         console.error('Failed to load status:', error);
@@ -58,49 +58,42 @@ function setCoreState(state) {
     }
 }
 
-function addMessage(text, type, suffix = null) {
+function addMessage(text, type) {
     const messageDiv = document.createElement('div');
     messageDiv.className = `message ${type}`;
-    
+
     const avatarDiv = document.createElement('div');
     avatarDiv.className = 'message-avatar';
     avatarDiv.textContent = type === 'user' ? 'D' : 'M';
     messageDiv.appendChild(avatarDiv);
-    
+
     const bodyDiv = document.createElement('div');
     bodyDiv.className = 'message-body';
-    
+
     const contentDiv = document.createElement('div');
     contentDiv.className = 'message-content';
     contentDiv.textContent = text;
     bodyDiv.appendChild(contentDiv);
-    
-    if (suffix) {
-        const suffixDiv = document.createElement('div');
-        suffixDiv.className = 'message-suffix';
-        suffixDiv.textContent = suffix;
-        bodyDiv.appendChild(suffixDiv);
-    }
-    
+
     messageDiv.appendChild(bodyDiv);
     chatMessages.appendChild(messageDiv);
     chatMessages.scrollTop = chatMessages.scrollHeight;
-    
+
     lastResponse = text;
 }
 
 async function sendMessage() {
     const message = messageInput.value.trim();
     if (!message) return;
-    
+
     addMessage(message, 'user');
     messageInput.value = '';
     messageInput.style.height = 'auto';
-    
+
     setCoreState('thinking');
     typingIndicator.classList.add('active');
     btnSend.disabled = true;
-    
+
     try {
         const response = await fetch(`${API_BASE}/chat`, {
             method: 'POST',
@@ -110,17 +103,17 @@ async function sendMessage() {
                 conversation_id: conversationId
             })
         });
-        
+
         const data = await response.json();
         conversationId = data.conversation_id;
-        
+
         setCoreState('speaking');
-        addMessage(data.response, 'assistant', 'diz Misaka Misaka.');
-        
+        addMessage(data.response, 'assistant');
+
         if (voiceEnabled) {
             speak(data.response);
         }
-        
+
         setTimeout(() => setCoreState(null), 3000);
     } catch (error) {
         addMessage('Erro ao conectar com o servidor.', 'system');
@@ -135,7 +128,7 @@ async function sendMessage() {
 function clearChat() {
     chatMessages.innerHTML = '';
     conversationId = null;
-    addMessage('Conversa reiniciada. Como posso ajudar?', 'system', 'diz Misaka Misaka.');
+    addMessage('Conversa reiniciada. Como posso ajudar?', 'system');
 }
 
 function speak(text) {
@@ -161,32 +154,32 @@ async function loadAlerts() {
     try {
         const response = await fetch(`${API_BASE}/notifications/alerts`);
         const data = await response.json();
-        
+
         const alertsContainer = document.getElementById('alertsContainer');
         const alertsCount = document.getElementById('alertsCount');
         if (!alertsContainer) return;
-        
+
         alertsContainer.textContent = '';
-        
+
         if (data.alerts && data.alerts.length > 0) {
             alertsCount.textContent = data.alerts.length;
-            
+
             data.alerts.slice(0, 10).forEach(alert => {
                 const alertDiv = document.createElement('div');
                 alertDiv.className = `alert-item alert-${alert.priority}`;
-                
+
                 const titleSpan = document.createElement('span');
                 titleSpan.className = 'alert-title';
                 titleSpan.textContent = alert.title;
                 alertDiv.appendChild(titleSpan);
-                
+
                 const messageSpan = document.createElement('span');
                 messageSpan.className = 'alert-message';
                 messageSpan.textContent = alert.message;
                 alertDiv.appendChild(messageSpan);
-                
+
                 alertsContainer.appendChild(alertDiv);
-                
+
                 if (!pendingAlertIds.includes(alert.id)) {
                     pendingAlertIds.push(alert.id);
                     if (Notification.permission === 'granted') {
@@ -194,7 +187,7 @@ async function loadAlerts() {
                     }
                 }
             });
-            
+
             localStorage.setItem('misaka_pending_alerts', JSON.stringify(pendingAlertIds));
         } else {
             alertsCount.textContent = '0';

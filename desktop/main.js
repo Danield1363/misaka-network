@@ -1,9 +1,11 @@
 const { app, BrowserWindow, Tray, Menu, nativeImage, Notification, ipcMain } = require('electron');
 const path = require('path');
+const fs = require('fs');
 
 let mainWindow;
 let tray;
 let isQuitting = false;
+let notifiedAlertIds = new Set();
 
 const CONFIG = {
     API_BASE_URL: process.env.MISAKA_API_BASE_URL || 'https://p01--misaka-network--nf5wq7twf8xg.code.run/api',
@@ -12,6 +14,29 @@ const CONFIG = {
     ALWAYS_ON_TOP_DEFAULT: process.env.ALWAYS_ON_TOP_DEFAULT === 'true',
     TRANSPARENT_MODE_DEFAULT: process.env.TRANSPARENT_MODE_DEFAULT === 'true'
 };
+
+const NOTIFIED_IDS_FILE = path.join(app.getPath('userData'), 'notified_alerts.json');
+
+function loadNotifiedIds() {
+    try {
+        if (fs.existsSync(NOTIFIED_IDS_FILE)) {
+            const data = JSON.parse(fs.readFileSync(NOTIFIED_IDS_FILE, 'utf-8'));
+            notifiedAlertIds = new Set(data.ids || []);
+        }
+    } catch (error) {
+        console.error('Failed to load notified IDs:', error);
+    }
+}
+
+function saveNotifiedIds() {
+    try {
+        fs.writeFileSync(NOTIFIED_IDS_FILE, JSON.stringify({
+            ids: Array.from(notifiedAlertIds)
+        }));
+    } catch (error) {
+        console.error('Failed to save notified IDs:', error);
+    }
+}
 
 function createWindow() {
     mainWindow = new BrowserWindow({
@@ -64,7 +89,7 @@ function createTray() {
 
 function setupIPC() {
     ipcMain.handle('get-config', () => CONFIG);
-    
+
     ipcMain.handle('send-notification', (event, { title, body }) => {
         if (Notification.isSupported()) {
             const notification = new Notification({ title, body });
@@ -78,9 +103,12 @@ function setupPolling() {
         try {
             const response = await fetch(`${CONFIG.API_BASE_URL}/notifications/alerts`);
             const data = await response.json();
-            
+
             if (data.alerts && data.alerts.length > 0) {
-                const criticalAlerts = data.alerts.filter(a => a.priority === 'critical');
+                const criticalAlerts = data.alerts.filter(
+                    a => a.priority === 'critical' && !notifiedAlertIds.has(a.id)
+                );
+
                 criticalAlerts.forEach(alert => {
                     if (Notification.isSupported()) {
                         new Notification({
@@ -88,7 +116,10 @@ function setupPolling() {
                             body: alert.message
                         }).show();
                     }
+                    notifiedAlertIds.add(alert.id);
                 });
+
+                saveNotifiedIds();
             }
         } catch (error) {
             console.error('Polling error:', error);
@@ -97,6 +128,7 @@ function setupPolling() {
 }
 
 app.whenReady().then(() => {
+    loadNotifiedIds();
     createWindow();
     setupPolling();
 
