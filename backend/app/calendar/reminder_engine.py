@@ -57,3 +57,21 @@ class ReminderEngine:
         except Exception as e:
             logger.error(f"Failed to get pending reminders: {e}")
             return []
+
+    async def update_reminder(self, reminder_id: str, data: dict[str, Any]) -> dict[str, Any] | None:
+        if not self.enabled:
+            return None
+        try:
+            return await self.repository.update_reminder(reminder_id, data)
+        except Exception as e:
+            logger.error(f"Failed to update reminder: {e}")
+            return None
+
+    async def delete_reminder(self, reminder_id: str) -> bool:
+        if not self.enabled:
+            return False
+        try:
+            return await self.repository.delete_reminder(reminder_id)
+        except Exception as e:
+            logger.error(f"Failed to delete reminder: {e}")
+            return False

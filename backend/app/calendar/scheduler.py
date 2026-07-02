@@ -47,3 +47,12 @@ class SchedulerEngine:
         except Exception as e:
             logger.error(f"Scheduler error: {e}")
             return {"processed_reminders": 0, "created_notifications": 0, "status": "error"}
+
+    async def list_notifications(self, status: str | None = None) -> list[dict[str, Any]]:
+        if not self.enabled:
+            return []
+        try:
+            return await self.repository.list_notifications(status)
+        except Exception as e:
+            logger.error(f"Failed to list notifications: {e}")
+            return []

@@ -35,7 +35,7 @@ async def update_reminder(reminder_id: str, data: ReminderUpdate) -> ReminderRes
     update_data = {k: v for k, v in data.model_dump().items() if v is not None}
     if not update_data:
         raise HTTPException(status_code=400, detail="No fields to update")
-    result = await reminder_engine.repository.update_reminder(reminder_id, update_data)
+    result = await reminder_engine.update_reminder(reminder_id, update_data)
     if not result:
         raise HTTPException(status_code=404, detail="Reminder not found")
     return ReminderResponse(**result)
@@ -65,7 +65,7 @@ async def cancel_reminder(reminder_id: str) -> ReminderResponse:
 async def delete_reminder(reminder_id: str) -> dict[str, str]:
     if not reminder_engine.enabled:
         raise HTTPException(status_code=503, detail="Reminders not enabled")
-    success = await reminder_engine.repository.delete_reminder(reminder_id)
+    success = await reminder_engine.delete_reminder(reminder_id)
     if not success:
         raise HTTPException(status_code=404, detail="Reminder not found")
     return {"status": "deleted"}

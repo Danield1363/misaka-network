@@ -17,7 +17,7 @@ async def run_scheduler() -> SchedulerRunResponse:
 async def list_notifications(status: str | None = Query(None)) -> NotificationListResponse:
     if not scheduler_engine.enabled:
         return NotificationListResponse(notifications=[], total=0)
-    result = await scheduler_engine.repository.list_notifications(status)
+    result = await scheduler_engine.list_notifications(status)
     return NotificationListResponse(
         notifications=[NotificationOutboxResponse(**n) for n in result],
         total=len(result)
