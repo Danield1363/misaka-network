@@ -56,3 +56,4 @@ class NotificationIngestResponse(BaseModel):
     summary: str
     category: str
     is_sensitive: bool
+    persistence_failed: bool = False

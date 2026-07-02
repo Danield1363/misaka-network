@@ -45,7 +45,8 @@ async def ingest_notification(
         should_alert=result.get("should_alert", False),
         summary=result.get("summary", "Notification received"),
         category=result.get("category", "general"),
-        is_sensitive=result.get("is_sensitive", False)
+        is_sensitive=result.get("is_sensitive", False),
+        persistence_failed=result.get("persistence_failed", False)
     )
 
 

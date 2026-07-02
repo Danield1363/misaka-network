@@ -33,17 +33,30 @@ class NotificationEngine:
             "metadata": data.get("metadata", {})
         }
 
-        saved = await self.repository.create(notification_record)
+        persistence_failed = False
+
+        try:
+            saved = await self.repository.create(notification_record)
+        except Exception as e:
+            logger.error(f"Failed to save notification: app={data.get('app_name')} error={type(e).__name__}")
+            persistence_failed = True
+            saved = {"id": None}
 
         if classification["should_alert"]:
-            alert_data = {
-                "notification_id": saved.get("id"),
-                "title": f"{classification['importance'].upper()}: {data.get('app_name', '')}",
-                "message": classification["summary"],
-                "status": "pending",
-                "priority": classification["importance"]
-            }
-            await self.repository.create_alert(alert_data)
+            try:
+                alert_data = {
+                    "notification_id": saved.get("id"),
+                    "title": f"{classification['importance'].upper()}: {data.get('app_name', '')}",
+                    "message": classification["summary"],
+                    "status": "pending",
+                    "priority": classification["importance"]
+                }
+                await self.repository.create_alert(alert_data)
+            except Exception as e:
+                logger.error(f"Failed to save alert: app={data.get('app_name')} error={type(e).__name__}")
+                persistence_failed = True
+
+        classification["persistence_failed"] = persistence_failed
 
         return classification
 

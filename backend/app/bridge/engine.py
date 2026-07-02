@@ -67,7 +67,8 @@ class NotificationBridge:
             "should_alert": result.get("should_alert"),
             "summary": result.get("summary"),
             "category": result.get("category"),
-            "is_sensitive": result.get("is_sensitive")
+            "is_sensitive": result.get("is_sensitive"),
+            "persistence_failed": result.get("persistence_failed", False)
         }
 
     def get_status(self) -> dict[str, Any]:
