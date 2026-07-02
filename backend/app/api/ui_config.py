@@ -4,7 +4,7 @@ router = APIRouter()
 
 
 @router.get("/ui-config")
-async def get_ui_config() -> dict[str, str]:
+async def get_ui_config() -> dict[str, str | bool]:
     return {
         "theme": "misaka-hud",
         "primary_color": "#68d5ff",
@@ -12,5 +12,8 @@ async def get_ui_config() -> dict[str, str]:
         "accent_color": "#b38cff",
         "background": "#081018",
         "panel_style": "glass",
-        "animation_level": "medium"
+        "animation_level": "medium",
+        "hud_enabled_default": False,
+        "core_animation_style": "orbital",
+        "notification_style": "console"
     }

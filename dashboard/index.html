@@ -19,13 +19,27 @@
                     <span class="status-text">Online</span>
                 </div>
             </div>
+            <div class="header-center">
+                <div class="provider-badge" id="providerBadge">mock</div>
+                <span class="version" id="version">v0.2 Genesis</span>
+            </div>
             <div class="header-right">
-                <span class="version" id="version">v0.1 Genesis</span>
+                <button class="btn-icon" id="btnVoice" title="Voice">🔊</button>
+                <button class="btn-icon" id="btnHUD" title="HUD Mode">◎</button>
+                <button class="btn-icon" id="btnSettings" title="Settings">⚙</button>
             </div>
         </header>
 
         <main class="main-content">
             <aside class="sidebar">
+                <div class="core-visualizer" id="coreVisualizer">
+                    <div class="core-ring ring-1"></div>
+                    <div class="core-ring ring-2"></div>
+                    <div class="core-ring ring-3"></div>
+                    <div class="core-nucleus"></div>
+                    <div class="core-label">Misaka Core</div>
+                </div>
+
                 <div class="status-panel" id="statusPanel">
                     <h3>System Status</h3>
                     <div class="status-grid">
@@ -49,13 +63,6 @@
                             <span class="status-label">Notifications</span>
                             <span class="status-value" id="notificationsStatus">-</span>
                         </div>
-                    </div>
-                </div>
-
-                <div class="alerts-panel">
-                    <h3>Important Alerts</h3>
-                    <div id="alertsContainer" class="alerts-container">
-                        <div class="alert-empty">No alerts</div>
                     </div>
                 </div>
 
@@ -95,40 +102,63 @@
                         <span class="module-name">LLM</span>
                         <span class="module-status online" id="llmStatus">Active</span>
                     </div>
+                    <div class="module-card">
+                        <div class="module-icon">🔔</div>
+                        <span class="module-name">Bridge</span>
+                        <span class="module-status online">Online</span>
+                    </div>
                 </div>
             </aside>
 
             <section class="chat-section">
                 <div class="chat-header">
                     <div class="persona-badge">
-                        <div class="persona-avatar">M</div>
+                        <div class="persona-avatar" id="personaAvatar">M</div>
                         <div class="persona-info">
                             <span class="persona-name">Misaka</span>
-                            <span class="persona-style">System Intelligence</span>
+                            <span class="persona-style" id="personaStyle">System Intelligence</span>
                         </div>
                     </div>
-                    <button class="btn-clear" id="btnClear">Clear</button>
+                    <div class="chat-actions">
+                        <button class="btn-icon" id="btnCopyLast" title="Copy last response">📋</button>
+                        <button class="btn-icon" id="btnSpeakLast" title="Speak last response">🔊</button>
+                        <button class="btn-clear" id="btnClear">Clear</button>
+                    </div>
                 </div>
 
                 <div class="chat-messages" id="chatMessages">
                     <div class="message system">
-                        <div class="message-content">
-                            Sistema inicializado. Brain Engine online. Como posso ajudar?
+                        <div class="message-avatar">M</div>
+                        <div class="message-body">
+                            <div class="message-content">
+                                Sistema inicializado. Brain Engine online. Como posso ajudar?
+                            </div>
+                            <div class="message-suffix">diz Misaka Misaka.</div>
                         </div>
-                        <div class="message-suffix">diz Misaka Misaka.</div>
                     </div>
                 </div>
 
                 <div class="chat-input">
-                    <input type="text" id="messageInput" placeholder="Digite sua mensagem..." autocomplete="off">
+                    <textarea id="messageInput" placeholder="Digite sua mensagem..." rows="1"></textarea>
                     <button id="btnSend" class="btn-send">Enviar</button>
                 </div>
             </section>
+
+            <aside class="alerts-sidebar">
+                <div class="alerts-header">
+                    <h3>Alerts</h3>
+                    <span class="alerts-count" id="alertsCount">0</span>
+                </div>
+                <div id="alertsContainer" class="alerts-container">
+                    <div class="alert-empty">No alerts</div>
+                </div>
+            </aside>
         </main>
     </div>
 
     <div class="typing-indicator" id="typingIndicator">
-        <span></span><span></span><span></span>
+        <div class="typing-core"></div>
+        <span>Misaka está processando</span>
     </div>
 
     <script src="config.js"></script>
