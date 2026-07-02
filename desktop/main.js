@@ -2,13 +2,25 @@ const { app, BrowserWindow, Tray, Menu, nativeImage, Notification, ipcMain, shel
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+const { spawn } = require('child_process');
 
 let mainWindow;
 let tray;
 let isQuitting = false;
 let notifiedAlertIds = new Set();
 
-const DASHBOARD_DIR = path.join(__dirname, '..', 'dashboard');
+const isPackaged = app.isPackaged;
+
+function getDashboardDir() {
+    if (isPackaged) {
+        const resourcePath = path.join(process.resourcesPath, 'dashboard');
+        if (fs.existsSync(resourcePath)) return resourcePath;
+        return path.join(process.resourcesPath, 'app', 'dashboard');
+    }
+    return path.join(__dirname, '..', 'dashboard');
+}
+
+const DASHBOARD_DIR = getDashboardDir();
 
 const CONFIG = {
     API_BASE_URL: process.env.MISAKA_API_BASE_URL || 'https://p01--misaka-network--nf5wq7twf8xg.code.run/api',
@@ -195,6 +207,72 @@ function createTray() {
     tray.on('double-click', () => mainWindow.show());
 }
 
+function findWindowsApp(name) {
+    const localAppData = process.env.LOCALAPPDATA || '';
+    const programFiles = process.env['PROGRAMFILES'] || 'C:\\Program Files';
+    const programFilesX86 = process.env['PROGRAMFILES(X86)'] || 'C:\\Program Files (x86)';
+
+    const searchPaths = [
+        path.join(localAppData, 'Programs', name),
+        path.join(programFiles, name),
+        path.join(programFilesX86, name),
+        path.join(programFiles, `${name}\\${name}.exe`),
+        path.join(programFilesX86, `${name}\\${name}.exe`),
+    ];
+
+    for (const p of searchPaths) {
+        if (fs.existsSync(p)) return p;
+        if (fs.existsSync(`${p}.exe`)) return `${p}.exe`;
+    }
+    return null;
+}
+
+const WINDOWS_APP_LAUNCHERS = {
+    browser: () => shell.openExternal('https://www.google.com'),
+    chrome: () => {
+        const found = findWindowsApp('Google\\Chrome\\Application\\chrome.exe');
+        if (found) spawn(found, [], { detached: true, stdio: 'ignore' }).unref();
+        else shell.openExternal('https://www.google.com');
+    },
+    firefox: () => {
+        const found = findWindowsApp('Mozilla Firefox\\firefox.exe');
+        if (found) spawn(found, [], { detached: true, stdio: 'ignore' }).unref();
+        else shell.openExternal('https://www.google.com');
+    },
+    edge: () => {
+        const found = findWindowsApp('Microsoft\\Edge\\Application\\msedge.exe');
+        if (found) spawn(found, [], { detached: true, stdio: 'ignore' }).unref();
+        else shell.openExternal('https://www.google.com');
+    },
+    vscode: () => {
+        const found = findWindowsApp('Microsoft VS Code');
+        if (found) spawn(found, [], { detached: true, stdio: 'ignore' }).unref();
+        else spawn('code', [], { detached: true, stdio: 'ignore' }).unref();
+    },
+    explorer: () => spawn('explorer', [], { detached: true, stdio: 'ignore' }).unref(),
+    discord: () => {
+        const found = findWindowsApp('Discord');
+        if (found) spawn(found, [], { detached: true, stdio: 'ignore' }).unref();
+        else shell.openExternal('https://discord.com/app');
+    },
+    youtube: () => shell.openExternal('https://www.youtube.com'),
+    spotify: () => shell.openExternal('https://open.spotify.com'),
+};
+
+function launchApp(appName) {
+    if (process.platform === 'win32') {
+        const launcher = WINDOWS_APP_LAUNCHERS[appName];
+        if (launcher) {
+            try { launcher(); } catch (e) { /* fallback */ }
+            return { success: true, app: appName };
+        }
+        shell.openExternal(appName);
+        return { success: true, app: appName };
+    }
+    shell.openExternal(appName);
+    return { success: true, app: appName };
+}
+
 function setupIPC() {
     ipcMain.handle('get-config', () => CONFIG);
 
@@ -207,25 +285,7 @@ function setupIPC() {
     });
 
     ipcMain.handle('open-app', (event, { appName }) => {
-        const appMap = {
-            browser: null,
-            chrome: process.platform === 'win32' ? 'chrome' : 'google-chrome',
-            firefox: process.platform === 'win32' ? 'firefox' : 'firefox',
-            edge: process.platform === 'win32' ? 'msedge' : 'microsoft-edge',
-            discord: process.platform === 'win32' ? 'Discord' : 'discord',
-            vscode: process.platform === 'win32' ? 'code' : 'code',
-            explorer: process.platform === 'win32' ? 'explorer' : 'nautilus',
-        };
-
-        const cmd = appMap[appName] || appName;
-        if (cmd) {
-            shell.openExternal(cmd === null ? '' : cmd).catch(() => {
-                shell.openExternal('https://www.google.com');
-            });
-        } else {
-            shell.openExternal('');
-        }
-        return { success: true };
+        return launchApp(appName);
     });
 
     ipcMain.handle('open-url', (event, { url }) => {

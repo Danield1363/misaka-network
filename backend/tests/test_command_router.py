@@ -159,6 +159,36 @@ async def test_router_conversation_returns_none():
     assert result is None
 
 
+@pytest.mark.asyncio
+async def test_router_voice_enable():
+    from app.commands.router import CommandRouter
+    router = CommandRouter()
+    result = await router.route("ligue a voz")
+    assert result is not None
+    assert result["type"] == "command_executed"
+    assert result["intent"] == "voice_on"
+
+
+@pytest.mark.asyncio
+async def test_router_open_settings():
+    from app.commands.router import CommandRouter
+    router = CommandRouter()
+    result = await router.route("abra configurações")
+    assert result is not None
+    assert result["type"] == "command_executed"
+    assert result["intent"] == "open_settings"
+
+
+@pytest.mark.asyncio
+async def test_router_clear_chat():
+    from app.commands.router import CommandRouter
+    router = CommandRouter()
+    result = await router.route("limpe o chat")
+    assert result is not None
+    assert result["type"] == "command_executed"
+    assert result["intent"] == "clear_chat"
+
+
 def test_intent_map_has_required_intents():
     required = [
         "clear_alerts", "show_alerts", "hud_on", "hud_off",

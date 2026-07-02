@@ -12,6 +12,35 @@ from app.core.config import get_settings
 
 logger = logging.getLogger(__name__)
 
+UI_EFFECT_MAP = {
+    "clear_alerts": "refresh_alerts",
+    "show_alerts": "refresh_alerts",
+    "hud_on": "hud_enable",
+    "hud_off": "hud_disable",
+    "open_settings": "open_settings",
+    "clear_chat": "clear_chat",
+    "voice_on": "voice_enable",
+    "voice_off": "voice_disable",
+    "voice_female": "voice_enable",
+    "open_browser": "open_app",
+    "open_app": "open_app",
+    "open_url": "open_url",
+    "search_web": "search_web",
+    "pc_status": "show_status",
+    "android_vibrate": "android_action",
+    "android_open_app": "android_action",
+    "android_toast": "android_action",
+    "android_status": "android_status",
+    "create_task": "refresh_tasks",
+    "list_tasks": "refresh_tasks",
+    "complete_task": "refresh_tasks",
+    "remember": "memory_saved",
+    "recall": "memory_search",
+    "forget": "memory_deleted",
+    "create_reminder": "refresh_reminders",
+    "list_reminders": "refresh_reminders",
+}
+
 
 class BrainEngine:
     def __init__(self) -> None:
@@ -41,31 +70,36 @@ class BrainEngine:
         intent = self.planner.detect_intent(message)
         logger.info(f"Detected intent: {intent}")
 
-        # Handle command intent via CommandRouter
         if intent == "command":
             from app.commands.router import CommandRouter
             router = CommandRouter()
-            result = await router.handle(message)
+            result = await router.route(message)
 
-            if result and result.handled:
-                formatted_response = self.persona_engine.format_response(result.response or "Comando executado.")
+            if result is None:
+                logger.warning("CommandRouter returned None for command intent")
+            elif result.get("type") == "command_executed":
+                response_text = result.get("response_message", "Comando executado.")
+                formatted_response = self.persona_engine.format_response(response_text)
 
                 await self.memory_engine.save_interaction(
                     conversation_id=conversation_id,
                     user_message=message,
                     assistant_response=formatted_response,
-                    metadata={"intent": "command", "command": result.command},
+                    metadata={"intent": "command", "command": result.get("intent")},
                 )
 
                 execution_time = time.time() - start_time
+                command_intent = result.get("intent", "")
                 response_metadata = {
                     "intent": "command",
-                    "command": result.command,
-                    "action_taken": result.action_taken,
+                    "command": command_intent,
+                    "tool_name": result.get("tool_name"),
+                    "action_taken": result.get("tool_name"),
+                    "ui_effect": UI_EFFECT_MAP.get(command_intent, ""),
                     "version": self.settings.VERSION,
                     "memory_enabled": memory_enabled,
                     "memories_used": len(memories),
-                    **result.metadata,
+                    **result.get("metadata", {}),
                 }
 
                 return ChatResponse(
@@ -75,6 +109,26 @@ class BrainEngine:
                     execution_time=round(execution_time, 4),
                     conversation_id=conversation_id,
                     metadata=response_metadata,
+                )
+            elif result.get("type") == "confirmation_required":
+                response_text = result.get("message", "Essa ação requer confirmação.")
+                formatted_response = self.persona_engine.format_response(response_text)
+
+                execution_time = time.time() - start_time
+                return ChatResponse(
+                    response=formatted_response,
+                    agent="command_router",
+                    model=None,
+                    execution_time=round(execution_time, 4),
+                    conversation_id=conversation_id,
+                    metadata={
+                        "intent": "command",
+                        "command": result.get("intent"),
+                        "requires_confirmation": True,
+                        "confirmation_id": result.get("confirmation_id"),
+                        "version": self.settings.VERSION,
+                        "memory_enabled": memory_enabled,
+                    },
                 )
 
         context = {

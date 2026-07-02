@@ -23,12 +23,20 @@ class CommandRouter:
         logger.info(f"Command detected: {intent.name} (confidence: {intent.confidence})")
 
         if intent.requires_confirmation:
+            from app.commands.confirmations import confirmation_manager
+            conf = confirmation_manager.create_confirmation(
+                intent=intent.name,
+                tool_name=intent.tool_name or "",
+                parameters=dict(intent.parameters),
+                message=intent.response_message or f"A ação '{intent.name}' requer confirmação. Posso executar?"
+            )
             return {
                 "type": "confirmation_required",
                 "intent": intent.name,
                 "tool_name": intent.tool_name,
-                "message": intent.response_message or f"A ação '{intent.name}' requer confirmação. Posso executar?",
-                "parameters": intent.parameters
+                "message": conf.message,
+                "confirmation_id": conf.id,
+                "parameters": intent.parameters,
             }
 
         input_data = dict(intent.parameters)
@@ -43,10 +51,6 @@ class CommandRouter:
             input_data["app"] = extract_app_name(message)
         elif intent.tool_name == "desktop.search_web":
             input_data["query"] = extract_search_query(message)
-        elif intent.tool_name == "ui.set_hud_mode":
-            pass
-        elif intent.tool_name == "ui.set_voice_enabled":
-            pass
 
         try:
             result = await self.executor.execute(

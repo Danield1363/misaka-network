@@ -1,11 +1,20 @@
 import pytest
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 from app.android.engine import AndroidEngine
+
+
+def _make_settings(bridge_enabled=True, db_configured=True):
+    settings = MagicMock()
+    settings.ANDROID_BRIDGE_ENABLED = bridge_enabled
+    settings.SUPABASE_URL = "http://test.supabase.co" if db_configured else ""
+    settings.SUPABASE_SERVICE_ROLE_KEY = "test-key" if db_configured else ""
+    return settings
 
 
 @pytest.fixture
 def engine_enabled():
-    with patch("app.android.engine.is_memory_enabled", return_value=True):
+    with patch("app.android.engine.get_settings") as mock:
+        mock.return_value = _make_settings(bridge_enabled=True, db_configured=True)
         engine = AndroidEngine()
         engine.repository = AsyncMock()
         yield engine
@@ -13,7 +22,8 @@ def engine_enabled():
 
 @pytest.fixture
 def engine_disabled():
-    with patch("app.android.engine.is_memory_enabled", return_value=False):
+    with patch("app.android.engine.get_settings") as mock:
+        mock.return_value = _make_settings(bridge_enabled=False)
         yield AndroidEngine()
 
 
@@ -31,9 +41,9 @@ async def test_enqueue_action(engine_enabled):
 
 @pytest.mark.asyncio
 async def test_enqueue_disabled(engine_disabled):
-    result = await engine_enabled.enqueue_action({"action_type": "vibrate"}) if False else engine_disabled.enqueue_action({"action_type": "vibrate"})
-    result = await result
-    assert result["status"] == "pending" or result["status"] == "local"
+    result = await engine_disabled.enqueue_action({"action_type": "vibrate"})
+    assert result["status"] == "error"
+    assert "disabled" in result["error"].lower()
 
 
 @pytest.mark.asyncio
@@ -83,3 +93,4 @@ async def test_get_status_enabled(engine_enabled):
 async def test_get_status_disabled(engine_disabled):
     status = await engine_disabled.get_status()
     assert status["enabled"] is False
+    assert "disabled" in status["reason"].lower()

@@ -302,13 +302,6 @@ function addMessage(text, type) {
     contentDiv.textContent = text;
     bodyDiv.appendChild(contentDiv);
 
-    if (type === 'assistant') {
-        const suffix = document.createElement('div');
-        suffix.className = 'message-suffix';
-        suffix.textContent = 'diz Misaka Misaka.';
-        bodyDiv.appendChild(suffix);
-    }
-
     messageDiv.appendChild(bodyDiv);
     chatMessages.appendChild(messageDiv);
     chatMessages.scrollTop = chatMessages.scrollHeight;

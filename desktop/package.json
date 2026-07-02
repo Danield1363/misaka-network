@@ -28,6 +28,13 @@
       "assets/**/*",
       "control/**/*"
     ],
+    "extraResources": [
+      {
+        "from": "../dashboard",
+        "to": "dashboard",
+        "filter": ["**/*"]
+      }
+    ],
     "win": {
       "target": ["nsis", "portable"],
       "icon": "assets/icon.ico"

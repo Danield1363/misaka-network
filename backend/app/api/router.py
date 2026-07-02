@@ -18,6 +18,7 @@ from app.api.llm_status import router as llm_status_router
 from app.api.notification_actions import router as notification_actions_router
 from app.api.android import router as android_router
 from app.api.approvals import router as approvals_router
+from app.api.commands import router as commands_router
 
 api_router = APIRouter()
 api_router.include_router(health_router)
@@ -39,3 +40,4 @@ api_router.include_router(llm_status_router)
 api_router.include_router(notification_actions_router)
 api_router.include_router(android_router)
 api_router.include_router(approvals_router)
+api_router.include_router(commands_router)
