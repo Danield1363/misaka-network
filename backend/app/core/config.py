@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     SUPABASE_SERVICE_ROLE_KEY: str = ""
     MEMORY_ENABLED: bool = False
     NOTIFICATIONS_ENABLED: bool = False
+    NOTIFICATION_INGEST_TOKEN: str = ""
 
 
 @lru_cache()

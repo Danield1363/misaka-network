@@ -1,20 +1,57 @@
 from __future__ import annotations
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Header
 from app.schemas.notifications import (
     NotificationIngestRequest, NotificationIngestResponse,
     NotificationListResponse, NotificationResponse,
     AlertListResponse, ImportantAlertResponse
 )
 from app.notifications.engine import NotificationEngine
+from app.bridge.engine import notification_bridge
 
 router = APIRouter()
 notification_engine = NotificationEngine()
 
 
 @router.post("/notifications/ingest", response_model=NotificationIngestResponse)
-async def ingest_notification(data: NotificationIngestRequest) -> NotificationIngestResponse:
-    result = await notification_engine.ingest_notification(data.model_dump())
-    return NotificationIngestResponse(**result)
+async def ingest_notification(
+    data: NotificationIngestRequest,
+    x_misaka_token: str | None = Header(None)
+) -> NotificationIngestResponse:
+    if not notification_bridge.verify_token(x_misaka_token):
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    result = await notification_bridge.ingest(data.model_dump())
+
+    if result.get("status") == "rate_limited":
+        raise HTTPException(
+            status_code=429,
+            detail={
+                "error": result.get("error"),
+                "retry_after": result.get("retry_after")
+            }
+        )
+
+    if result.get("status") == "duplicate":
+        return NotificationIngestResponse(
+            importance="normal",
+            should_alert=False,
+            summary="Duplicate notification",
+            category="general",
+            is_sensitive=False
+        )
+
+    return NotificationIngestResponse(
+        importance=result.get("importance", "normal"),
+        should_alert=result.get("should_alert", False),
+        summary="Notification received",
+        category="general",
+        is_sensitive=False
+    )
+
+
+@router.get("/notifications/bridge/status")
+async def bridge_status() -> dict[str, str | int | None]:
+    return notification_bridge.get_status()
 
 
 @router.get("/notifications", response_model=NotificationListResponse)

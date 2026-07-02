@@ -97,5 +97,34 @@ messageInput.addEventListener('keypress', (e) => {
 });
 btnClear.addEventListener('click', clearChat);
 
+async function loadAlerts() {
+    try {
+        const response = await fetch(`${API_BASE}/notifications/alerts`);
+        const data = await response.json();
+        
+        const alertsContainer = document.getElementById('alertsContainer');
+        if (!alertsContainer) return;
+        
+        alertsContainer.innerHTML = '';
+        
+        if (data.alerts && data.alerts.length > 0) {
+            data.alerts.slice(0, 5).forEach(alert => {
+                const alertDiv = document.createElement('div');
+                alertDiv.className = `alert-item alert-${alert.priority}`;
+                alertDiv.innerHTML = `
+                    <span class="alert-title">${alert.title}</span>
+                    <span class="alert-message">${alert.message}</span>
+                `;
+                alertsContainer.appendChild(alertDiv);
+            });
+        } else {
+            alertsContainer.innerHTML = '<div class="alert-empty">No alerts</div>';
+        }
+    } catch (error) {
+        console.error('Failed to load alerts:', error);
+    }
+}
+
 loadStatus();
+loadAlerts();
 messageInput.focus();
