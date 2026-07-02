@@ -25,7 +25,7 @@ class ToolRegistry:
                 "description": t.description,
                 "category": t.category,
                 "danger_level": t.danger_level,
-                "requires_confirmation": t.requires_confirmation
+                "requires_confirmation": t.requires_confirmation,
             }
             for t in self._tools.values()
         ]
@@ -43,13 +43,41 @@ def register_default_tools() -> None:
     from app.tools.calendar.tools import CreateEventTool, ListEventsTool
     from app.tools.reminders.tools import CreateReminderTool, ListRemindersTool
     from app.tools.scheduler.tools import RunSchedulerTool
+    from app.tools.notifications_tools import (
+        ListAlertsTool, AckAlertTool, AckAllAlertsTool,
+        ClearResolvedAlertsTool, NotificationsSummaryTool,
+    )
+    from app.tools.ui_tools import (
+        SetHudModeTool, OpenSettingsTool, ClearChatTool,
+        SetVoiceEnabledTool, SetAutoSpeakTool, SetVoiceProfileTool,
+    )
+    from app.tools.desktop_tools import (
+        DesktopOpenAppTool, DesktopOpenUrlTool, DesktopSearchWebTool,
+        DesktopGetSystemStatusTool, DesktopSetVolumeTool, DesktopShowNotificationTool,
+        DesktopFocusMisakaTool, DesktopToggleAlwaysOnTopTool, DesktopToggleHudModeTool,
+    )
+    from app.tools.android_tools import (
+        AndroidEnqueueActionTool, AndroidListPendingTool, AndroidCancelActionTool,
+        AndroidPingDeviceTool, AndroidShowToastTool, AndroidVibrateTool,
+        AndroidOpenAppTool, AndroidOpenUrlTool,
+    )
 
     for tool_class in [
         CreateMemoryTool, SearchMemoryTool,
         CreateTaskTool, ListTasksTool, CompleteTaskTool,
         CreateEventTool, ListEventsTool,
         CreateReminderTool, ListRemindersTool,
-        RunSchedulerTool
+        RunSchedulerTool,
+        ListAlertsTool, AckAlertTool, AckAllAlertsTool,
+        ClearResolvedAlertsTool, NotificationsSummaryTool,
+        SetHudModeTool, OpenSettingsTool, ClearChatTool,
+        SetVoiceEnabledTool, SetAutoSpeakTool, SetVoiceProfileTool,
+        DesktopOpenAppTool, DesktopOpenUrlTool, DesktopSearchWebTool,
+        DesktopGetSystemStatusTool, DesktopSetVolumeTool, DesktopShowNotificationTool,
+        DesktopFocusMisakaTool, DesktopToggleAlwaysOnTopTool, DesktopToggleHudModeTool,
+        AndroidEnqueueActionTool, AndroidListPendingTool, AndroidCancelActionTool,
+        AndroidPingDeviceTool, AndroidShowToastTool, AndroidVibrateTool,
+        AndroidOpenAppTool, AndroidOpenUrlTool,
     ]:
         registry.register(tool_class())
 

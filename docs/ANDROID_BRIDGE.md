@@ -1,158 +1,56 @@
-# Android Notification Bridge - Configuration
+# Android Bridge
 
-## Overview
+Misaka communicates with Android devices through an action queue system compatible with MacroDroid/Tasker.
 
-Este guia explica como configurar o Android para enviar notificações para a Misaka Core.
-
-## Requisitos
-
-- Android 8.0+ (API 26+)
-- App com `NotificationListenerService`
-- Permissão `BIND_NOTIFICATION_LISTENER_SERVICE`
-
-## Configuração da API
-
-### 1. Obter o Token
-
-O token de ingestão está configurado no backend:
+## Architecture
 
 ```
-NOTIFICATION_INGEST_TOKEN=your-secret-token-here
+Misaka Backend (Action Queue) → MacroDroid/Tasker polls → Executes on device → Reports back
 ```
 
-### 2. Headers da Requisição
+## API Endpoints
 
-Toda requisição deve incluir:
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/android/status` | Device connection status |
+| POST | `/api/android/actions/enqueue` | Queue a new action |
+| GET | `/api/android/actions/pending` | List pending actions |
+| POST | `/api/android/actions/{id}/complete` | Mark action completed |
+| POST | `/api/android/actions/{id}/fail` | Mark action failed |
+| POST | `/api/android/actions/{id}/cancel` | Cancel action |
 
-```
-Content-Type: application/json
-X-Misaka-Token: <your-token>
-```
+## Action Types
 
-### 3. Endpoint
+### SAFE
+- `show_toast` — Show toast message
+- `vibrate` — Vibrate device
+- `open_url` — Open URL in browser
+- `open_app` — Open app by package name
+- `play_notification_sound` — Play notification sound
 
-```
-POST https://p01--misaka-network--nf5wq7twf8xg.code.run/api/notifications/ingest
-```
+### SENSITIVE (disabled by default)
+- `send_sms` — Send SMS
+- `send_whatsapp` — Send WhatsApp message
+- `change_settings` — Change device settings
 
-## Formato da Notificação
+## Setup with MacroDroid
 
-```json
-{
-  "app_name": "WhatsApp",
-  "package_name": "com.whatsapp",
-  "title": "João",
-  "content": "Oi, tudo bem?",
-  "sender": "João",
-  "channel": "messages",
-  "received_at": "2026-07-03T10:30:00Z",
-  "device_id": "android-001",
-  "metadata": {
-    "android_version": "14",
-    "app_version": "2.24.13.78"
-  }
-}
-```
+1. Install MacroDroid on your Android device
+2. Create a "HTTP Request" macro that polls `GET /api/android/actions/pending`
+3. Parse the response and execute allowed actions
+4. Call `POST /api/android/actions/{id}/complete` or `/fail` when done
 
-## Campos
-
-| Campo | Obrigatório | Descrição |
-|-------|-------------|-----------|
-| `app_name` | Sim | Nome do app que gerou a notificação |
-| `package_name` | Não | Package name do app Android |
-| `title` | Não | Título da notificação |
-| `content` | Não | Conteúdo da notificação |
-| `sender` | Não | Remetente (se aplicável) |
-| `channel` | Não | Canal da notificação |
-| `received_at` | Sim | Timestamp ISO 8601 |
-| `device_id` | Não | Identificador do dispositivo |
-| `metadata` | Não | Dados extras |
-
-## Exemplos de Uso
-
-### cURL
+## Example Action Enqueue
 
 ```bash
-curl -X POST https://p01--misaka-network--nf5wq7twf8xg.code.run/api/notifications/ingest \
+curl -X POST http://localhost:8000/api/android/actions/enqueue \
   -H "Content-Type: application/json" \
-  -H "X-Misaka-Token: your-token" \
-  -d '{
-    "app_name": "WhatsApp",
-    "title": "João",
-    "content": "Oi, tudo bem?",
-    "received_at": "2026-07-03T10:30:00Z",
-    "device_id": "android-001"
-  }'
+  -d '{"action_type": "vibrate", "payload": {"duration": 500}, "risk_level": "safe"}'
 ```
 
-### Android (Kotlin)
+## Security
 
-```kotlin
-class MisakaNotificationListener : NotificationListenerService() {
-
-    override fun onNotificationPosted(sbn: StatusBarNotification) {
-        val notification = sbn.notification
-        val extras = notification.extras
-
-        val data = mapOf(
-            "app_name" to sbn.packageName,
-            "package_name" to sbn.packageName,
-            "title" to extras.getString(Notification.EXTRA_TITLE),
-            "content" to extras.getString(Notification.EXTRA_TEXT),
-            "received_at" to Instant.now().toString(),
-            "device_id" to getDeviceId()
-        )
-
-        sendToMisaka(data)
-    }
-
-    private fun sendToMisaka(data: Map<String, Any>) {
-        Thread {
-            val client = OkHttpClient()
-            val json = JSONObject(data).toString()
-            val body = json.toRequestBody("application/json".toMediaType())
-
-            val request = Request.Builder()
-                .url("https://p01--misaka-network--nf5wq7twf8xg.code.run/api/notifications/ingest")
-                .addHeader("X-Misaka-Token", "your-token")
-                .post(body)
-                .build()
-
-            client.newCall(request).execute()
-        }.start()
-    }
-}
-```
-
-## Rate Limiting
-
-- Máximo: 100 notificações por minuto por device
-- Se exceder: erro 429 com `retry_after`
-
-## Deduplicação
-
-- Notificações duplicadas (mesmo package_name + title + content) são descartadas
-- Janela: 5 minutos
-
-## Status da Bridge
-
-```bash
-curl https://p01--misaka-network--nf5wq7twf8xg.code.run/api/notifications/bridge/status
-```
-
-Response:
-```json
-{
-  "bridge_status": "online",
-  "connected_devices": 1,
-  "last_notification": "2026-07-03T10:30:00Z",
-  "notifications_today": 42
-}
-```
-
-## Segurança
-
-- **NUNCA** exponha o token em código fonte
-- Use variáveis de ambiente ou secure storage
-- O token deve ter pelo menos 32 caracteres
-- Rotate o token periodicamente
+- Actions are classified by risk level
+- Sensitive actions require explicit confirmation
+- All actions are logged
+- WhatsApp/SMS sending disabled by default

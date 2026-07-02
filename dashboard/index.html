@@ -21,7 +21,7 @@
             </div>
             <div class="header-center">
                 <div class="provider-badge" id="providerBadge">mock</div>
-                <span class="version" id="version">v0.2 Genesis</span>
+                <span class="version" id="version">v0.3 Genesis</span>
             </div>
             <div class="header-right">
                 <button class="btn-icon" id="btnVoice" title="Voice">🔊</button>
@@ -76,7 +76,7 @@
                         <label class="voice-label">
                             <span>Voice</span>
                             <select id="voiceSelect" class="voice-select">
-                                <option value="">Default</option>
+                                <option value="">Misaka BR Feminina (padrão)</option>
                             </select>
                         </label>
                         <label class="voice-label">
@@ -97,7 +97,10 @@
                                 <span>Auto Speak</span>
                             </label>
                         </div>
-                        <button class="btn-test-voice" id="btnTestVoice">Test Voice</button>
+                        <div class="voice-buttons">
+                            <button class="btn-test-voice" id="btnTestVoice">Test Voice</button>
+                            <button class="btn-stop-voice" id="btnStopVoice">Stop</button>
+                        </div>
                     </div>
                 </div>
 
@@ -138,9 +141,14 @@
                         <span class="module-status online" id="llmStatus">Active</span>
                     </div>
                     <div class="module-card">
-                        <div class="module-icon">🔔</div>
-                        <span class="module-name">Bridge</span>
-                        <span class="module-status online">Online</span>
+                        <div class="module-icon">🖥</div>
+                        <span class="module-name">Desktop</span>
+                        <span class="module-status" id="desktopModule">Checking</span>
+                    </div>
+                    <div class="module-card">
+                        <div class="module-icon">📱</div>
+                        <span class="module-name">Android</span>
+                        <span class="module-status" id="androidModule">-</span>
                     </div>
                 </div>
             </aside>
@@ -182,7 +190,11 @@
             <aside class="alerts-sidebar">
                 <div class="alerts-header">
                     <h3>Alerts</h3>
-                    <span class="alerts-count" id="alertsCount">0</span>
+                    <div class="alerts-actions">
+                        <span class="alerts-count" id="alertsCount">0</span>
+                        <button class="btn-icon btn-small" id="btnRefreshAlerts" title="Refresh">🔄</button>
+                        <button class="btn-icon btn-small" id="btnAckAll" title="Ack all">✓✓</button>
+                    </div>
                 </div>
                 <div id="alertsContainer" class="alerts-container">
                     <div class="alert-empty">No alerts</div>
@@ -195,6 +207,104 @@
         <div class="typing-core"></div>
         <span>Misaka está processando</span>
     </div>
+
+    <!-- Settings Drawer -->
+    <div class="settings-overlay" id="settingsOverlay"></div>
+    <div class="settings-drawer" id="settingsDrawer">
+        <div class="settings-header">
+            <h2>Configurações</h2>
+            <button class="btn-icon" id="btnCloseSettings" onclick="closeSettings()">✕</button>
+        </div>
+        <div class="settings-content">
+            <div class="settings-section">
+                <h3>LLM Status</h3>
+                <div class="settings-item">
+                    <span>Provider:</span>
+                    <span id="settingsLlmStatus">-</span>
+                </div>
+                <div class="settings-item" style="display:none">
+                    <span>Cooldowns:</span>
+                    <span id="settingsCooldowns">-</span>
+                </div>
+            </div>
+            <div class="settings-section">
+                <h3>Voz</h3>
+                <div class="settings-item">
+                    <span>Voz habilitada:</span>
+                    <label class="toggle-label">
+                        <input type="checkbox" id="settingsVoiceEnabled" checked>
+                    </label>
+                </div>
+                <div class="settings-item">
+                    <span>Auto speak:</span>
+                    <label class="toggle-label">
+                        <input type="checkbox" id="settingsAutoSpeak">
+                    </label>
+                </div>
+            </div>
+            <div class="settings-section">
+                <h3>Interface</h3>
+                <div class="settings-item">
+                    <span>Modo HUD:</span>
+                    <label class="toggle-label">
+                        <input type="checkbox" id="settingsHudMode">
+                    </label>
+                </div>
+                <div class="settings-item">
+                    <span>Modo compacto:</span>
+                    <label class="toggle-label">
+                        <input type="checkbox" id="settingsCompactMode">
+                    </label>
+                </div>
+            </div>
+            <div class="settings-section">
+                <h3>Bridges</h3>
+                <div class="settings-item">
+                    <span>Desktop:</span>
+                    <span id="settingsDesktopBridge">Verificando...</span>
+                </div>
+                <div class="settings-item">
+                    <span>Android:</span>
+                    <span id="settingsAndroidBridge">-</span>
+                </div>
+            </div>
+            <div class="settings-section">
+                <h3>Notificações</h3>
+                <div class="settings-item">
+                    <span>Notificações PC:</span>
+                    <label class="toggle-label">
+                        <input type="checkbox" id="settingsDesktopNotifications">
+                    </label>
+                </div>
+            </div>
+            <div class="settings-section">
+                <h3>Sobre</h3>
+                <div class="settings-item">
+                    <span>Versão:</span>
+                    <span id="settingsVersion">0.3 Genesis</span>
+                </div>
+                <div class="settings-item">
+                    <span>Ambiente:</span>
+                    <span id="settingsEnvironment">development</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Approval Modal -->
+    <div class="approval-modal" id="approvalModal" style="display:none">
+        <div class="approval-content">
+            <h3>Ação requer confirmação</h3>
+            <p>Misaka quer executar uma ação.</p>
+            <div class="approval-actions">
+                <button class="btn-approve">Permitir</button>
+                <button class="btn-deny">Negar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div class="toast-container" id="toastContainer"></div>
 
     <script src="config.js"></script>
     <script src="app.js"></script>

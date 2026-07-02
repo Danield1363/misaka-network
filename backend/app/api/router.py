@@ -14,6 +14,10 @@ from app.api.persona import router as persona_router
 from app.api.ui_config import router as ui_config_router
 from app.api.voice_config import router as voice_config_router
 from app.api.notifications import router as notifications_router
+from app.api.llm_status import router as llm_status_router
+from app.api.notification_actions import router as notification_actions_router
+from app.api.android import router as android_router
+from app.api.approvals import router as approvals_router
 
 api_router = APIRouter()
 api_router.include_router(health_router)
@@ -31,3 +35,7 @@ api_router.include_router(persona_router)
 api_router.include_router(ui_config_router)
 api_router.include_router(voice_config_router)
 api_router.include_router(notifications_router)
+api_router.include_router(llm_status_router)
+api_router.include_router(notification_actions_router)
+api_router.include_router(android_router)
+api_router.include_router(approvals_router)

@@ -1,17 +1,42 @@
 {
   "name": "misaka-desktop",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Misaka Network Desktop App",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "build": "electron-builder"
+    "debug": "electron . --enable-logging",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder --win nsis portable"
   },
   "dependencies": {
     "electron": "^28.0.0"
   },
   "devDependencies": {
     "electron-builder": "^24.0.0"
+  },
+  "build": {
+    "appId": "com.daniel.misaka",
+    "productName": "Misaka Network",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "package.json",
+      "assets/**/*",
+      "control/**/*"
+    ],
+    "win": {
+      "target": ["nsis", "portable"],
+      "icon": "assets/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": "assets/icon.ico"
+    }
   },
   "author": "Daniel",
   "license": "MIT"

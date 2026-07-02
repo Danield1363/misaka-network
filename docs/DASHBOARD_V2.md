@@ -1,40 +1,81 @@
-# Dashboard V2 - Misaka Experience Pack
+# Dashboard V2 — Misaka v0.3 Genesis
 
 ## Overview
 
-A Dashboard V2 é o redesign completo da interface da Misaka, com visual estilo HUD futurista.
+The dashboard has been completely overhauled for v0.3 Genesis with working settings, voice controls, alert management, and desktop/Android bridge integration.
 
-## Funcionalidades
+## New Features
 
-- Core Visualizer animado (anéis concêntricos + núcleo pulsante)
-- Chat com mensagens estilo sistema
-- Central de notificações melhorada
-- Modo HUD transparente
-- Voz da Misaka (SpeechSynthesis)
-- Polling automático de alertas
-- Notificações do navegador
+### Settings Drawer
+- Open with gear icon in header
+- LLM status display
+- Voice configuration
+- HUD mode toggle
+- Compact mode
+- Wake word settings
+- Desktop/Android bridge status
+- Clear all data option
 
-## Visual
+### Voice System
+- **Auto-speak on every response** (fixed from v0.2)
+- Voice presets prioritizing pt-BR female voices
+- Rate/pitch sliders with localStorage persistence
+- Test voice button
+- Stop voice button
+- Speak suffix toggle ("diz Misaka Misaka")
 
-### Paleta
-- Background: #081018
-- Primary: #68d5ff
-- Secondary: #7a7dff
-- Accent: #b38cff
+### Alert Management
+- Ack all button
+- Refresh button
+- Filter buttons (All, Critical, Important, Pending)
+- Individual ack button per alert
+- Auto-refresh every 10 seconds
 
-### Core Visualizer
-- 3 anéis concêntricos rotativos
-- Núcleo central pulsante
-- Estados: idle, thinking, speaking
+### Toast System
+- Non-intrusive notifications for actions
+- Types: success, error, info, warning
+- Auto-dismiss after 4 seconds
 
-## Deploy
+### Confirmation Modal
+- For sensitive actions
+- Approve/Deny buttons
+- ESC to close
 
-Continua compatível com Cloudflare Pages.
+### HUD Mode
+- Transparent overlay mode
+- Works in web and desktop
+- Persisted in localStorage
 
-## Configuração
+### Wake Word (Experimental)
+- Web Speech API integration
+- "Misaka" wake phrase detection
+- Visual feedback when listening
+- Privacy: only text sent, no audio
 
-Edite `config.js` para alterar:
-- `API_BASE_URL`
-- `POLL_INTERVAL_MS`
-- `ENABLE_VOICE`
-- `ENABLE_HUD_MODE`
+### Status Badges
+- Real-time LLM provider/model status
+- Fallback indicator
+- Desktop bridge status
+- Android bridge status
+- Memory/Calendar/Tools/Notifications status
+
+## Layout
+
+```
+┌─────────────────────────────────────────────┐
+│ Header: Logo | Provider Badge | Voice/HUD/Settings │
+├───────┬───────────────────────┬─────────────┤
+│ Side  │ Chat Messages         │ Alerts      │
+│ bar   │                       │ Sidebar     │
+│       │ [Messages...]         │ [Filters]   │
+│ Voice │                       │ [Alerts]    │
+│ Panel │                       │             │
+│       │ Chat Input            │             │
+│ Modules│ [Text] [Send]       │             │
+└───────┴───────────────────────┴─────────────┘
+```
+
+## Responsive
+
+- < 1024px: Alerts sidebar hidden
+- < 768px: Left sidebar hidden, full-width chat

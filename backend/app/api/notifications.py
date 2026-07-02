@@ -67,10 +67,10 @@ async def list_notifications(importance: str | None = Query(None)) -> Notificati
 
 
 @router.get("/notifications/alerts", response_model=AlertListResponse)
-async def list_alerts() -> AlertListResponse:
+async def list_alerts(status: str | None = Query(None)) -> AlertListResponse:
     if not notification_engine.enabled:
         return AlertListResponse(alerts=[], total=0)
-    result = await notification_engine.list_important_alerts()
+    result = await notification_engine.list_important_alerts(status)
     return AlertListResponse(
         alerts=[ImportantAlertResponse(**a) for a in result],
         total=len(result)
@@ -85,3 +85,31 @@ async def acknowledge_alert(alert_id: str) -> ImportantAlertResponse:
     if not result:
         raise HTTPException(status_code=404, detail="Alert not found")
     return ImportantAlertResponse(**result)
+
+
+@router.post("/notifications/alerts/ack-all")
+async def acknowledge_all_alerts() -> dict:
+    if not notification_engine.enabled:
+        return {"acknowledged_count": 0, "message": "Notifications not enabled"}
+    alerts = await notification_engine.list_important_alerts("pending")
+    acked = 0
+    for alert in alerts:
+        result = await notification_engine.acknowledge_alert(alert["id"])
+        if result:
+            acked += 1
+    return {"acknowledged_count": acked, "total_pending": len(alerts)}
+
+
+@router.get("/notifications/summary")
+async def notification_summary() -> dict:
+    if not notification_engine.enabled:
+        return {"total": 0, "pending": 0, "critical": 0, "acknowledged": 0}
+    all_alerts = await notification_engine.list_important_alerts()
+    pending = [a for a in all_alerts if a.get("status") == "pending"]
+    critical = [a for a in all_alerts if a.get("priority") == "critical"]
+    return {
+        "total": len(all_alerts),
+        "pending": len(pending),
+        "critical": len(critical),
+        "acknowledged": len(all_alerts) - len(pending)
+    }

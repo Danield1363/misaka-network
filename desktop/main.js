@@ -1,6 +1,7 @@
-const { app, BrowserWindow, Tray, Menu, nativeImage, Notification, ipcMain } = require('electron');
+const { app, BrowserWindow, Tray, Menu, nativeImage, Notification, ipcMain, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 
 let mainWindow;
 let tray;
@@ -14,7 +15,7 @@ const CONFIG = {
     DASHBOARD_URL: process.env.MISAKA_DASHBOARD_URL || '',
     START_MINIMIZED: process.env.START_MINIMIZED === 'true',
     ALWAYS_ON_TOP_DEFAULT: process.env.ALWAYS_ON_TOP_DEFAULT === 'true',
-    TRANSPARENT_MODE_DEFAULT: process.env.TRANSPARENT_MODE_DEFAULT === 'true'
+    TRANSPARENT_MODE_DEFAULT: process.env.TRANSPARENT_MODE_DEFAULT === 'true',
 };
 
 const NOTIFIED_IDS_FILE = path.join(app.getPath('userData'), 'notified_alerts.json');
@@ -33,7 +34,7 @@ function loadNotifiedIds() {
 function saveNotifiedIds() {
     try {
         fs.writeFileSync(NOTIFIED_IDS_FILE, JSON.stringify({
-            ids: Array.from(notifiedAlertIds)
+            ids: Array.from(notifiedAlertIds),
         }));
     } catch (error) {
         console.error('Failed to save notified IDs:', error);
@@ -67,8 +68,8 @@ function showErrorWindow(message) {
         title: 'Misaka - Configuration Error',
         webPreferences: {
             nodeIntegration: false,
-            contextIsolation: true
-        }
+            contextIsolation: true,
+        },
     });
 
     errorWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(`
@@ -97,9 +98,9 @@ function showErrorWindow(message) {
                 }
                 h1 { color: #68d5ff; margin-bottom: 1rem; }
                 p { color: #8faec5; line-height: 1.6; }
-                code { 
-                    background: rgba(104, 213, 255, 0.1); 
-                    padding: 0.2rem 0.5rem; 
+                code {
+                    background: rgba(104, 213, 255, 0.1);
+                    padding: 0.2rem 0.5rem;
                     border-radius: 4px;
                     color: #68d5ff;
                 }
@@ -129,15 +130,16 @@ function createWindow() {
         width: 1200,
         height: 800,
         title: 'Misaka Network',
-        icon: path.join(__dirname, 'icon.png'),
+        icon: path.join(__dirname, 'assets', 'icon.ico'),
         webPreferences: {
             nodeIntegration: false,
             contextIsolation: true,
-            preload: path.join(__dirname, 'preload.js')
+            preload: path.join(__dirname, 'preload.js'),
         },
         alwaysOnTop: CONFIG.ALWAYS_ON_TOP_DEFAULT,
         transparent: CONFIG.TRANSPARENT_MODE_DEFAULT,
-        frame: !CONFIG.TRANSPARENT_MODE_DEFAULT
+        frame: !CONFIG.TRANSPARENT_MODE_DEFAULT,
+        show: !CONFIG.START_MINIMIZED,
     });
 
     mainWindow.loadURL(dashboardUrl);
@@ -166,15 +168,27 @@ function createWindow() {
 }
 
 function createTray() {
-    const icon = nativeImage.createEmpty();
+    let icon;
+    try {
+        icon = nativeImage.createFromPath(path.join(__dirname, 'assets', 'icon.ico'));
+    } catch (e) {
+        icon = nativeImage.createEmpty();
+    }
+
     tray = new Tray(icon);
     tray.setToolTip('Misaka Network');
 
     const contextMenu = Menu.buildFromTemplate([
         { label: 'Show Misaka', click: () => mainWindow.show() },
         { label: 'Always on Top', type: 'checkbox', checked: CONFIG.ALWAYS_ON_TOP_DEFAULT, click: (item) => mainWindow.setAlwaysOnTop(item.checked) },
+        { label: 'HUD Mode', type: 'checkbox', checked: false, click: (item) => {
+            mainWindow.webContents.executeJavaScript(`
+                document.body.classList.toggle('hud-mode', ${item.checked});
+                localStorage.setItem('misaka_hud_mode', ${item.checked});
+            `).catch(() => {});
+        }},
         { type: 'separator' },
-        { label: 'Quit', click: () => { isQuitting = true; app.quit(); } }
+        { label: 'Quit', click: () => { isQuitting = true; app.quit(); } },
     ]);
 
     tray.setContextMenu(contextMenu);
@@ -188,7 +202,77 @@ function setupIPC() {
         if (Notification.isSupported()) {
             const notification = new Notification({ title, body });
             notification.show();
+            notification.on('click', () => mainWindow.show());
         }
+    });
+
+    ipcMain.handle('open-app', (event, { appName }) => {
+        const appMap = {
+            browser: null,
+            chrome: process.platform === 'win32' ? 'chrome' : 'google-chrome',
+            firefox: process.platform === 'win32' ? 'firefox' : 'firefox',
+            edge: process.platform === 'win32' ? 'msedge' : 'microsoft-edge',
+            discord: process.platform === 'win32' ? 'Discord' : 'discord',
+            vscode: process.platform === 'win32' ? 'code' : 'code',
+            explorer: process.platform === 'win32' ? 'explorer' : 'nautilus',
+        };
+
+        const cmd = appMap[appName] || appName;
+        if (cmd) {
+            shell.openExternal(cmd === null ? '' : cmd).catch(() => {
+                shell.openExternal('https://www.google.com');
+            });
+        } else {
+            shell.openExternal('');
+        }
+        return { success: true };
+    });
+
+    ipcMain.handle('open-url', (event, { url }) => {
+        shell.openExternal(url);
+        return { success: true };
+    });
+
+    ipcMain.handle('get-system-status', () => {
+        return {
+            platform: process.platform,
+            hostname: os.hostname(),
+            arch: process.arch,
+            pid: process.pid,
+            memory: process.memoryUsage(),
+            uptime: process.uptime(),
+        };
+    });
+
+    ipcMain.handle('set-always-on-top', (event, { enabled }) => {
+        mainWindow.setAlwaysOnTop(enabled);
+        return { success: true, alwaysOnTop: enabled };
+    });
+
+    ipcMain.handle('set-hud-mode', (event, { enabled }) => {
+        mainWindow.webContents.executeJavaScript(`
+            document.body.classList.toggle('hud-mode', ${enabled});
+            localStorage.setItem('misaka_hud_mode', ${enabled});
+        `).catch(() => {});
+        return { success: true };
+    });
+
+    ipcMain.handle('focus-window', () => {
+        mainWindow.show();
+        mainWindow.focus();
+        return { success: true };
+    });
+
+    ipcMain.handle('toggle-compact', (event, { enabled }) => {
+        mainWindow.webContents.executeJavaScript(`
+            document.body.classList.toggle('compact-mode', ${enabled});
+            localStorage.setItem('misaka_compact_mode', ${enabled});
+        `).catch(() => {});
+        return { success: true };
+    });
+
+    ipcMain.handle('request-action', (event, action) => {
+        return { received: true, action };
     });
 }
 
@@ -205,10 +289,12 @@ function setupPolling() {
 
                 criticalAlerts.forEach(alert => {
                     if (Notification.isSupported()) {
-                        new Notification({
+                        const notification = new Notification({
                             title: alert.title,
-                            body: alert.message
-                        }).show();
+                            body: alert.message,
+                        });
+                        notification.show();
+                        notification.on('click', () => mainWindow.show());
                     }
                     notifiedAlertIds.add(alert.id);
                 });

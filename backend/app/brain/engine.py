@@ -29,51 +29,87 @@ class BrainEngine:
         metadata: dict[str, Any] | None = None
     ) -> ChatResponse:
         start_time = time.time()
-        
+
         if conversation_id is None:
             conversation_id = str(uuid.uuid4())
-        
+
         logger.info(f"Processing message in conversation {conversation_id}")
-        
+
         memories = await self.memory_engine.get_relevant_context(message)
         memory_enabled = self.memory_engine.enabled
-        
+
         intent = self.planner.detect_intent(message)
         logger.info(f"Detected intent: {intent}")
-        
+
+        # Handle command intent via CommandRouter
+        if intent == "command":
+            from app.commands.router import CommandRouter
+            router = CommandRouter()
+            result = await router.handle(message)
+
+            if result and result.handled:
+                formatted_response = self.persona_engine.format_response(result.response or "Comando executado.")
+
+                await self.memory_engine.save_interaction(
+                    conversation_id=conversation_id,
+                    user_message=message,
+                    assistant_response=formatted_response,
+                    metadata={"intent": "command", "command": result.command},
+                )
+
+                execution_time = time.time() - start_time
+                response_metadata = {
+                    "intent": "command",
+                    "command": result.command,
+                    "action_taken": result.action_taken,
+                    "version": self.settings.VERSION,
+                    "memory_enabled": memory_enabled,
+                    "memories_used": len(memories),
+                    **result.metadata,
+                }
+
+                return ChatResponse(
+                    response=formatted_response,
+                    agent="command_router",
+                    model=None,
+                    execution_time=round(execution_time, 4),
+                    conversation_id=conversation_id,
+                    metadata=response_metadata,
+                )
+
         context = {
             "conversation_id": conversation_id,
             "personality": self.personality.get_prompt(),
             "metadata": metadata or {},
-            "memories": memories
+            "memories": memories,
         }
-        
+
         agent_result = await self.orchestrator.execute(intent, message, context)
-        
+
         formatted_response = self.persona_engine.format_response(agent_result["response"])
-        
+
         await self.memory_engine.save_interaction(
             conversation_id=conversation_id,
             user_message=message,
             assistant_response=formatted_response,
-            metadata={"intent": intent}
+            metadata={"intent": intent},
         )
-        
+
         execution_time = time.time() - start_time
-        
+
         response_metadata = {
             "intent": intent,
             "version": self.settings.VERSION,
             "memory_enabled": memory_enabled,
             "memories_used": len(memories),
-            **agent_result.get("metadata", {})
+            **agent_result.get("metadata", {}),
         }
-        
+
         return ChatResponse(
             response=formatted_response,
             agent=agent_result["agent"],
             model=agent_result.get("model"),
             execution_time=round(execution_time, 4),
             conversation_id=conversation_id,
-            metadata=response_metadata
+            metadata=response_metadata,
         )

@@ -8,6 +8,13 @@ class Planner:
         logger.info(f"Detecting intent for: {message[:50]}...")
         lower_message = message.lower().strip()
 
+        # First, check if it's a command handled by CommandRouter
+        from app.commands.parser import detect_intent as detect_command_intent
+        cmd_match = detect_command_intent(message)
+        if cmd_match is not None:
+            logger.info(f"Command intent detected: {cmd_match.name}")
+            return "command"
+
         calendar_keywords = ["agenda", "evento", "compromisso", "reunião", "calendário"]
         if any(kw in lower_message for kw in calendar_keywords):
             return "calendar"
