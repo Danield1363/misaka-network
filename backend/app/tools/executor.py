@@ -33,7 +33,21 @@ class ToolExecutor:
 
         check_permission(tool, confirmed)
 
+        action_log = await self.action_engine.log_action_start(
+            action_name=tool_name,
+            tool_name=tool_name,
+            input_data=input_data,
+            dry_run=dry_run,
+            requires_confirmation=tool.requires_confirmation
+        )
+        action_id = action_log.get("id")
+
         if dry_run:
+            await self.action_engine.log_action_success(
+                action_id=action_id,
+                output={"dry_run": True},
+                metadata={"would_execute": True}
+            )
             return {
                 "success": True,
                 "tool": tool_name,
@@ -49,10 +63,9 @@ class ToolExecutor:
         try:
             result = await tool.run(input_data, context)
             await self.action_engine.log_action_success(
-                action_name=tool_name,
-                tool_name=tool_name,
-                input_data=input_data,
-                output=result
+                action_id=action_id,
+                output=result,
+                metadata=result.get("metadata", {})
             )
             return {
                 "success": True,
@@ -64,9 +77,7 @@ class ToolExecutor:
         except Exception as e:
             logger.error(f"Tool execution error: {e}")
             await self.action_engine.log_action_error(
-                action_name=tool_name,
-                tool_name=tool_name,
-                input_data=input_data,
+                action_id=action_id,
                 error=str(e)
             )
             return {

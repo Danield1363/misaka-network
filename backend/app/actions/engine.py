@@ -1,6 +1,5 @@
 import logging
 from typing import Any
-from datetime import datetime, timezone
 from app.actions.repository import ActionRepository
 from app.services.supabase import is_memory_enabled
 
@@ -43,50 +42,44 @@ class ActionEngine:
 
     async def log_action_success(
         self,
-        action_name: str,
-        tool_name: str | None = None,
-        input_data: dict[str, Any] | None = None,
-        output: dict[str, Any] | None = None
+        action_id: str | None,
+        output: dict[str, Any] | None = None,
+        metadata: dict[str, Any] | None = None
     ) -> dict[str, Any]:
-        if not self.enabled:
-            return {"id": "local", "status": "success"}
+        if not self.enabled or not action_id or action_id == "local":
+            return {"id": action_id, "status": "success"}
         try:
             data = {
-                "action_name": action_name,
-                "tool_name": tool_name,
                 "status": "success",
-                "input": input_data or {},
                 "output": output or {},
+                "metadata": metadata or {},
                 "completed_at": datetime.now(timezone.utc).isoformat()
             }
-            return await self.repository.create(data)
+            return await self.repository.update(action_id, data) or {"id": action_id, "status": "success"}
         except Exception as e:
             logger.error(f"Failed to log action success: {e}")
-            return {"id": "local", "status": "success"}
+            return {"id": action_id, "status": "success"}
 
     async def log_action_error(
         self,
-        action_name: str,
-        tool_name: str | None = None,
-        input_data: dict[str, Any] | None = None,
-        error: str = ""
+        action_id: str | None,
+        error: str = "",
+        metadata: dict[str, Any] | None = None
     ) -> dict[str, Any]:
-        if not self.enabled:
-            return {"id": "local", "status": "failed"}
+        if not self.enabled or not action_id or action_id == "local":
+            return {"id": action_id, "status": "failed"}
         try:
             data = {
-                "action_name": action_name,
-                "tool_name": tool_name,
                 "status": "failed",
-                "input": input_data or {},
                 "output": {},
                 "error": error,
+                "metadata": metadata or {},
                 "completed_at": datetime.now(timezone.utc).isoformat()
             }
-            return await self.repository.create(data)
+            return await self.repository.update(action_id, data) or {"id": action_id, "status": "failed"}
         except Exception as e:
             logger.error(f"Failed to log action error: {e}")
-            return {"id": "local", "status": "failed"}
+            return {"id": action_id, "status": "failed"}
 
     async def list_action_logs(self, status: str | None = None) -> list[dict[str, Any]]:
         if not self.enabled:

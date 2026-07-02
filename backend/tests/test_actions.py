@@ -13,18 +13,28 @@ def engine():
 async def test_log_action_start(engine):
     result = await engine.log_action_start("test.action")
     assert result["status"] == "pending"
+    assert result["id"] == "local"
 
 
 @pytest.mark.asyncio
-async def test_log_action_success(engine):
-    result = await engine.log_action_success("test.action")
+async def test_log_action_success_local(engine):
+    result = await engine.log_action_success("local", output={"key": "value"})
     assert result["status"] == "success"
+    assert result["id"] == "local"
 
 
 @pytest.mark.asyncio
-async def test_log_action_error(engine):
-    result = await engine.log_action_error("test.action", error="test error")
+async def test_log_action_error_local(engine):
+    result = await engine.log_action_error("local", error="test error")
     assert result["status"] == "failed"
+    assert result["id"] == "local"
+
+
+@pytest.mark.asyncio
+async def test_log_action_success_none_id(engine):
+    result = await engine.log_action_success(None, output={"key": "value"})
+    assert result["status"] == "success"
+    assert result["id"] is None
 
 
 @pytest.mark.asyncio
