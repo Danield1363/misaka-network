@@ -56,3 +56,58 @@ def test_category_detection(classifier):
 def test_finance_category(classifier):
     result = classifier.classify({"app_name": "Banco do Brasil", "title": "Transferência", "content": "R$ 100"})
     assert result["category"] == "finance"
+
+
+def test_critical_urgente_me_responde_agora(classifier):
+    result = classifier.classify({
+        "app_name": "WhatsApp",
+        "content": "URGENTE ME RESPONDE AGORA"
+    })
+    assert result["importance"] == "critical"
+    assert result["should_alert"] is True
+
+
+def test_critical_me_responde_urgente(classifier):
+    result = classifier.classify({
+        "app_name": "WhatsApp",
+        "content": "Me responde urgente"
+    })
+    assert result["importance"] == "critical"
+    assert result["should_alert"] is True
+
+
+def test_critical_emergencia(classifier):
+    result = classifier.classify({
+        "app_name": "WhatsApp",
+        "content": "Emergência, preciso de ajuda"
+    })
+    assert result["importance"] == "critical"
+    assert result["should_alert"] is True
+
+
+def test_critical_socorro(classifier):
+    result = classifier.classify({
+        "app_name": "Telefone",
+        "content": "Socorro"
+    })
+    assert result["importance"] == "critical"
+    assert result["should_alert"] is True
+
+
+def test_critical_erro_critico(classifier):
+    result = classifier.classify({
+        "app_name": "Gmail",
+        "title": "Servidor",
+        "content": "Erro crítico detectado"
+    })
+    assert result["importance"] == "critical"
+    assert result["should_alert"] is True
+
+
+def test_critical_caiu(classifier):
+    result = classifier.classify({
+        "app_name": "Discord",
+        "content": "Servidor caiu"
+    })
+    assert result["importance"] == "critical"
+    assert result["should_alert"] is True

@@ -33,6 +33,7 @@ class NotificationBridge:
 
         if not rate_limiter.is_allowed(device_id):
             retry_after = rate_limiter.get_retry_after(device_id)
+            logger.warning(f"Rate limited device={device_id} retry_after={retry_after}")
             return {
                 "status": "rate_limited",
                 "error": "Rate limit exceeded",
@@ -41,6 +42,7 @@ class NotificationBridge:
 
         is_duplicate = deduplicator.is_duplicate(data)
         if is_duplicate:
+            logger.info(f"Duplicate notification app={data.get('app_name')} title={data.get('title')}")
             return {
                 "status": "duplicate",
                 "duplicate": True,
@@ -48,6 +50,14 @@ class NotificationBridge:
             }
 
         result = await self.engine.ingest_notification(data)
+
+        logger.info(
+            f"Notification ingested app={data.get('app_name')} "
+            f"title={data.get('title')} "
+            f"importance={result.get('importance')} "
+            f"should_alert={result.get('should_alert')} "
+            f"category={result.get('category')}"
+        )
 
         return {
             "status": "received",
