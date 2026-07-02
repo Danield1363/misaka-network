@@ -1,8 +1,7 @@
 import logging
 from typing import Any
 from app.agents.base import BaseAgent
-from app.calendar.engine import CalendarEngine
-from app.calendar.reminder_engine import ReminderEngine
+from app.tools.executor import ToolExecutor
 
 logger = logging.getLogger(__name__)
 
@@ -12,8 +11,7 @@ class CalendarAgent(BaseAgent):
     description: str = "Agent for calendar events and reminders"
 
     def __init__(self) -> None:
-        self.calendar_engine = CalendarEngine()
-        self.reminder_engine = ReminderEngine()
+        self.tool_executor = ToolExecutor()
 
     async def run(self, message: str, context: dict[str, Any]) -> dict[str, Any]:
         logger.info(f"CalendarAgent processing: {message[:50]}...")
@@ -35,7 +33,7 @@ class CalendarAgent(BaseAgent):
             "response": "Entendi que isso envolve sua agenda, mas preciso de mais detalhes.",
             "agent": self.name,
             "model": None,
-            "metadata": {"intent": "calendar", "mock": True}
+            "metadata": {"intent": "calendar", "tools_used": [], "mock": True}
         }
 
     async def _handle_reminder(self, message: str, context: dict[str, Any]) -> dict[str, Any]:
@@ -43,36 +41,36 @@ class CalendarAgent(BaseAgent):
             "response": "Posso criar esse lembrete, mas preciso de uma data e horário em formato claro.",
             "agent": self.name,
             "model": None,
-            "metadata": {"intent": "reminder", "mock": True}
+            "metadata": {"intent": "reminder", "tools_used": [], "mock": True}
         }
 
     async def _handle_calendar(self, message: str, context: dict[str, Any]) -> dict[str, Any]:
         lower_message = message.lower().strip()
 
         if "hoje" in lower_message:
-            if self.calendar_engine.enabled:
-                events = await self.calendar_engine.get_today_events()
-                if events:
-                    event_list = "\n".join([f"- {e.get('title')} ({e.get('starts_at', '')[:16]})" for e in events])
-                    response = f"Seus eventos de hoje:\n{event_list}"
-                else:
-                    response = "Você não tem eventos para hoje."
+            result = await self.tool_executor.execute("calendar.list_events", {}, context)
+            events = result.get("data", {}).get("events", [])
+            if events:
+                event_list = "\n".join([f"- {e.get('title')} ({e.get('starts_at', '')[:16]})" for e in events])
+                response = f"Seus eventos de hoje:\n{event_list}"
             else:
-                response = "Agenda não está disponível no momento."
+                response = "Você não tem eventos para hoje."
         else:
-            if self.calendar_engine.enabled:
-                events = await self.calendar_engine.get_upcoming_events()
-                if events:
-                    event_list = "\n".join([f"- {e.get('title')} ({e.get('starts_at', '')[:16]})" for e in events[:5]])
-                    response = f"Próximos eventos:\n{event_list}"
-                else:
-                    response = "Você não tem eventos próximos."
+            result = await self.tool_executor.execute("calendar.list_events", {}, context)
+            events = result.get("data", {}).get("events", [])
+            if events:
+                event_list = "\n".join([f"- {e.get('title')} ({e.get('starts_at', '')[:16]})" for e in events[:5]])
+                response = f"Próximos eventos:\n{event_list}"
             else:
-                response = "Agenda não está disponível no momento."
+                response = "Você não tem eventos próximos."
 
         return {
             "response": response,
             "agent": self.name,
             "model": None,
-            "metadata": {"intent": "calendar", "mock": True}
+            "metadata": {
+                "intent": "calendar",
+                "tools_used": ["calendar.list_events"],
+                "mock": True
+            }
         }
