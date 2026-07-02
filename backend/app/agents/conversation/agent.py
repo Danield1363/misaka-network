@@ -16,6 +16,12 @@ class ConversationAgent(BaseAgent):
     async def run(self, message: str, context: dict[str, Any]) -> dict[str, Any]:
         logger.info(f"ConversationAgent processing: {message[:50]}...")
         
+        memories = context.get("memories", [])
+        
+        if memories:
+            memory_text = "\n".join([f"- {m.get('content', '')}" for m in memories])
+            context["memory_context"] = f"Relevant memories:\n{memory_text}"
+        
         try:
             llm_result = await self.llm_gateway.generate(message, context)
             
@@ -25,7 +31,8 @@ class ConversationAgent(BaseAgent):
                 "model": llm_result.get("model"),
                 "metadata": {
                     "provider": llm_result["provider"],
-                    "mock": llm_result["provider"] == "mock"
+                    "mock": llm_result["provider"] == "mock",
+                    "memories_used": len(memories)
                 }
             }
         except Exception as e:

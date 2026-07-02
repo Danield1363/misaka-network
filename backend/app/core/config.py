@@ -21,6 +21,10 @@ class Settings(BaseSettings):
     LLM_PROVIDER: str = "mock"
     GEMINI_API_KEY: str = ""
     GEMINI_MODEL: str = "gemini-pro"
+    
+    SUPABASE_URL: str = ""
+    SUPABASE_SERVICE_ROLE_KEY: str = ""
+    MEMORY_ENABLED: bool = False
 
 
 @lru_cache()
