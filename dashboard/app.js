@@ -325,37 +325,49 @@ function cleanAssistantText(text) {
 }
 
 // ==================== Client Action Handler ====================
-function handleClientAction(action) {
+async function handleClientAction(action) {
     if (!action || !action.type) return;
 
     const isDesktop = window.misakaDesktop && window.misakaDesktop.isAvailable;
 
     if (action.type === 'open_url') {
         if (isDesktop && window.misakaDesktop.openUrl) {
-            window.misakaDesktop.openUrl(action.url);
+            const result = await window.misakaDesktop.openUrl(action.url);
+            if (result && result.success) {
+                addMessage('Site aberto, diz Misaka Misaka.', 'assistant');
+            } else {
+                addMessage('Não consegui abrir o site. Tente novamente.', 'assistant');
+            }
         } else {
             try {
                 window.open(action.url, '_blank');
+                addMessage('Site aberto, diz Misaka Misaka.', 'assistant');
             } catch (e) {
-                showToast('Popup bloqueado. Permita popups para este site.', 'warning');
+                addMessage('Popup bloqueado. Permita popups para este site.', 'assistant');
             }
         }
-        showToast('Ação executada.', 'success');
         return;
     }
 
     if (action.type === 'open_app') {
+        const appLabel = action.app || 'aplicativo';
         if (isDesktop && window.misakaDesktop.openApp) {
-            window.misakaDesktop.openApp(action.app);
+            const result = await window.misakaDesktop.openApp(action.app);
+            if (result && result.success) {
+                addMessage(`${appLabel} aberto, diz Misaka Misaka.`, 'assistant');
+            } else {
+                const reason = (result && result.error) || 'app não encontrado';
+                addMessage(`Não consegui abrir ${appLabel}. ${reason}, diz Misaka Misaka.`, 'assistant');
+            }
         } else {
-            showToast('Para abrir apps do PC, use o app desktop da Misaka.', 'info');
+            addMessage('Não consigo abrir aplicativos locais pelo navegador. Use o app desktop da Misaka, diz Misaka Misaka.', 'assistant');
         }
         return;
     }
 
     if (action.type === 'search_web') {
         if (isDesktop && window.misakaDesktop.searchWeb) {
-            window.misakaDesktop.searchWeb(action.query, action.provider);
+            await window.misakaDesktop.searchWeb(action.query, action.provider);
         } else {
             const provider = action.provider || 'google';
             const urls = {
@@ -367,24 +379,23 @@ function handleClientAction(action) {
             try {
                 window.open(urls[provider] || urls.google, '_blank');
             } catch (e) {
-                showToast('Popup bloqueado. Permita popups para este site.', 'warning');
+                addMessage('Popup bloqueado. Permita popups para este site.', 'assistant');
             }
         }
-        showToast('Pesquisa aberta.', 'success');
+        addMessage('Pesquisa aberta, diz Misaka Misaka.', 'assistant');
         return;
     }
 
     if (action.type === 'get_system_status') {
         if (isDesktop && window.misakaDesktop.getSystemStatus) {
-            window.misakaDesktop.getSystemStatus().then(status => {
-                showToast(`PC: ${status.platform} | RAM: ${Math.round(status.memory?.heapUsed / 1024 / 1024 || 0)}MB`, 'info');
-            });
+            const status = await window.misakaDesktop.getSystemStatus();
+            addMessage(`PC: ${status.platform} | RAM: ${Math.round(status.memory?.heapUsed / 1024 / 1024 || 0)}MB`, 'assistant');
         }
         return;
     }
 
     if (action.type === 'vibrate') {
-        showToast('Comando de vibração enviado ao celular.', 'info');
+        addMessage('Comando de vibração enviado ao celular, diz Misaka Misaka.', 'assistant');
         return;
     }
 

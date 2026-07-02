@@ -282,12 +282,16 @@ function launchApp(appName) {
     if (process.platform === 'win32') {
         const launcher = WINDOWS_APP_LAUNCHERS[appName];
         if (launcher) {
-            try { launcher(); } catch (e) { /* fallback */ }
-            return { success: true, app: appName };
+            try {
+                launcher();
+                return { success: true, app: appName, method: 'allowlist' };
+            } catch (e) {
+                return { success: false, app: appName, error: `Falha ao executar: ${e.message}` };
+            }
         }
-        return { success: false, error: `App "${appName}" is not in the allowed list.` };
+        return { success: false, app: appName, error: `App "${appName}" não está na allowlist.` };
     }
-    return { success: false, error: `Unsupported platform: ${process.platform}` };
+    return { success: false, app: appName, error: `Plataforma não suportada: ${process.platform}` };
 }
 
 function setupIPC() {

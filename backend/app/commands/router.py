@@ -3,7 +3,6 @@ from typing import Any
 from app.commands.parser import (
     detect_intent,
     extract_url,
-    extract_youtube_search,
     extract_task_description,
     extract_reminder_text,
     extract_memory_content,
@@ -11,50 +10,13 @@ from app.commands.parser import (
     extract_search_query,
 )
 from app.commands.intents import Intent
+from app.commands.desktop_resolver import detect_desktop_command
 from app.tools.executor import ToolExecutor
 from app.web_actions.engine import WebActionEngine
 
 logger = logging.getLogger(__name__)
 
 web_action_engine = WebActionEngine()
-
-
-def build_client_action(intent_name: str, parameters: dict, message: str) -> dict[str, Any] | None:
-    web_result = web_action_engine.process(message)
-    if web_result:
-        return {
-            "type": "open_url",
-            "target": web_result.target,
-            "url": web_result.url,
-            "source": "web_action_engine",
-        }
-
-    if intent_name in ("open_youtube", "open_url_site"):
-        url = parameters.get("url") or extract_url(message) or "https://www.youtube.com"
-        return {"type": "open_url", "target": "desktop", "url": url}
-
-    if intent_name == "open_app":
-        app = extract_app_name(message)
-        return {"type": "open_app", "target": "desktop", "app": app}
-
-    if intent_name == "open_browser":
-        return {"type": "open_app", "target": "desktop", "app": "browser"}
-
-    if intent_name == "search_web":
-        query = extract_search_query(message)
-        url = f"https://www.google.com/search?q={query.replace(' ', '+')}" if query else "https://www.google.com"
-        return {"type": "open_url", "target": "desktop", "url": url}
-
-    if intent_name == "pc_status":
-        return {"type": "get_system_status", "target": "desktop"}
-
-    if intent_name == "android_vibrate":
-        return {"type": "vibrate", "target": "android"}
-
-    if intent_name == "android_toast":
-        return {"type": "show_toast", "target": "android", "message": "Alerta do Misaka"}
-
-    return None
 
 
 class CommandRouter:
@@ -66,6 +28,24 @@ class CommandRouter:
         message: str,
         context: dict[str, Any] | None = None,
     ) -> dict[str, Any] | None:
+        desktop_cmd = detect_desktop_command(message)
+        if desktop_cmd.matched:
+            logger.info(f"Desktop command: {desktop_cmd.command} -> {desktop_cmd.app}")
+            return {
+                "type": "command_executed",
+                "intent": desktop_cmd.intent,
+                "tool_name": "desktop.open_app",
+                "success": True,
+                "data": {"app": desktop_cmd.app},
+                "response_message": desktop_cmd.response_message,
+                "client_action": {
+                    "type": "open_app",
+                    "target": desktop_cmd.target_device,
+                    "app": desktop_cmd.app,
+                },
+                "metadata": {"response_mode": "action_short"},
+            }
+
         web_result = web_action_engine.process(message)
         if web_result:
             return {
@@ -81,7 +61,7 @@ class CommandRouter:
                     "url": web_result.url,
                     "source": "web_action_engine",
                 },
-                "metadata": {},
+                "metadata": {"response_mode": "action_short"},
             }
 
         intent = detect_intent(message)
@@ -128,7 +108,7 @@ class CommandRouter:
         elif intent.tool_name == "desktop.search_web":
             input_data["query"] = extract_search_query(message)
 
-        client_action = build_client_action(intent.name, input_data, message)
+        client_action = self._build_client_action(intent.name, input_data, message)
 
         try:
             result = await self.executor.execute(
@@ -157,3 +137,45 @@ class CommandRouter:
                 "error": str(e),
                 "response_message": f"Erro ao executar comando: {e}",
             }
+
+    def _build_client_action(
+        self, intent_name: str, parameters: dict, message: str
+    ) -> dict[str, Any] | None:
+        if intent_name in ("open_youtube", "open_url_site"):
+            url = (
+                parameters.get("url")
+                or extract_url(message)
+                or "https://www.youtube.com"
+            )
+            return {"type": "open_url", "target": "desktop", "url": url}
+
+        if intent_name == "open_app":
+            app = extract_app_name(message)
+            return {"type": "open_app", "target": "desktop", "app": app}
+
+        if intent_name == "open_browser":
+            return {"type": "open_app", "target": "desktop", "app": "browser"}
+
+        if intent_name == "search_web":
+            query = extract_search_query(message)
+            url = (
+                f"https://www.google.com/search?q={query.replace(' ', '+')}"
+                if query
+                else "https://www.google.com"
+            )
+            return {"type": "open_url", "target": "desktop", "url": url}
+
+        if intent_name == "pc_status":
+            return {"type": "get_system_status", "target": "desktop"}
+
+        if intent_name == "android_vibrate":
+            return {"type": "vibrate", "target": "android"}
+
+        if intent_name == "android_toast":
+            return {
+                "type": "show_toast",
+                "target": "android",
+                "message": "Alerta do Misaka",
+            }
+
+        return None
