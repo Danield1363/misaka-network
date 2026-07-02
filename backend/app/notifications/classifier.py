@@ -1,10 +1,11 @@
+import re
 from typing import Any
 from app.notifications.rules import (
     IGNORED_APPS, IMPORTANT_APPS, CRITICAL_KEYWORDS,
     SENSITIVE_KEYWORDS, IMPORTANT_KEYWORDS
 )
 
-CODE_PATTERN = r"\b\d{4,6}\b"
+CODE_PATTERN = re.compile(r"\b\d{4,6}\b")
 
 
 class NotificationClassifier:
@@ -30,7 +31,11 @@ class NotificationClassifier:
         }
 
     def _check_sensitive(self, text: str) -> bool:
-        return any(kw in text for kw in SENSITIVE_KEYWORDS)
+        if any(kw in text for kw in SENSITIVE_KEYWORDS):
+            return True
+        if CODE_PATTERN.search(text):
+            return True
+        return False
 
     def _calculate_importance(self, app_name: str, text: str) -> str:
         if any(ignored in app_name for ignored in IGNORED_APPS):

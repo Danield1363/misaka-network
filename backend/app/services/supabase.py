@@ -38,3 +38,8 @@ def get_supabase_client() -> Any:
 def is_memory_enabled() -> bool:
     settings = get_settings()
     return settings.MEMORY_ENABLED and get_supabase_client() is not None
+
+
+def is_notifications_enabled() -> bool:
+    settings = get_settings()
+    return settings.NOTIFICATIONS_ENABLED

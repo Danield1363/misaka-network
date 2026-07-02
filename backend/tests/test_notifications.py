@@ -5,13 +5,13 @@ from app.notifications.engine import NotificationEngine
 
 @pytest.fixture
 def engine_disabled():
-    with patch("app.notifications.engine.is_memory_enabled", return_value=False):
+    with patch("app.notifications.engine.is_notifications_enabled", return_value=False):
         yield NotificationEngine()
 
 
 @pytest.fixture
 def engine_enabled():
-    with patch("app.notifications.engine.is_memory_enabled", return_value=True):
+    with patch("app.notifications.engine.is_notifications_enabled", return_value=True):
         engine = NotificationEngine()
         engine.repository = AsyncMock()
         yield engine

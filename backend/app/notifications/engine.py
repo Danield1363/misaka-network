@@ -3,7 +3,7 @@ from typing import Any
 from datetime import datetime, timezone
 from app.notifications.repository import NotificationRepository
 from app.notifications.classifier import NotificationClassifier
-from app.services.supabase import is_memory_enabled
+from app.services.supabase import is_notifications_enabled
 
 logger = logging.getLogger(__name__)
 
@@ -12,7 +12,7 @@ class NotificationEngine:
     def __init__(self) -> None:
         self.repository = NotificationRepository()
         self.classifier = NotificationClassifier()
-        self.enabled = is_memory_enabled()
+        self.enabled = is_notifications_enabled()
 
     async def ingest_notification(self, data: dict[str, Any]) -> dict[str, Any]:
         classification = self.classifier.classify(data)
