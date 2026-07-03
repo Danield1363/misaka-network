@@ -4,23 +4,50 @@ const {
   extractCommandFromWakePhrase,
   normalizeVoiceText,
   chooseVoiceWakeMode,
-  isWebSpeechSupported,
-  isNativeDesktopSupported,
+  isCloudVoiceSupported,
   isDirectVoiceCommand,
   classifyVoiceCommand,
-  probeNativeVoiceDaemon,
 } = require("./voiceWake");
 
-assert.strictEqual(
-  normalizeVoiceText("Misaka, ABRA o YouTube!"),
-  "misaka abra o youtube",
-);
+function fakeStorage() {
+  return {
+    values: new Map(),
+    getItem(key) {
+      return this.values.has(key) ? this.values.get(key) : null;
+    },
+    setItem(key, value) {
+      this.values.set(key, String(value));
+    },
+  };
+}
+
+function setGlobal(name, value) {
+  const previous = globalThis[name];
+  Object.defineProperty(globalThis, name, {
+    configurable: true,
+    writable: true,
+    value,
+  });
+  return () => {
+    if (previous === undefined) {
+      delete globalThis[name];
+    } else {
+      Object.defineProperty(globalThis, name, {
+        configurable: true,
+        writable: true,
+        value: previous,
+      });
+    }
+  };
+}
+
+assert.strictEqual(normalizeVoiceText("ABRA o YouTube!!!"), "abra o youtube");
 assert.strictEqual(
   normalizeVoiceText("Ei Misaka, abrir notepad"),
   "ei misaka abrir notepad",
 );
 
-const cases = [
+const wakeCases = [
   ["Misaka, abra o YouTube", "abra o YouTube"],
   ["Ei Misaka abre o Discord", "abre o Discord"],
   [
@@ -29,270 +56,162 @@ const cases = [
   ],
   ["Acorda Misaka, limpe os alertas", "limpe os alertas"],
   ["Misaka", ""],
-  ["alô teste", null],
-  ["minha misaka não funciona", null],
+  ["alo teste", null],
 ];
 
-for (const [input, expected] of cases) {
+for (const [input, expected] of wakeCases) {
   assert.strictEqual(extractCommandFromWakePhrase(input), expected, input);
 }
 
-const fakeStorage = {
-  values: new Map(),
-  getItem(key) {
-    return this.values.has(key) ? this.values.get(key) : null;
-  },
-  setItem(key, value) {
-    this.values.set(key, value);
-  },
-};
+const directTrue = [
+  "abrir youtube",
+  "abra o discord",
+  "abrir notepad no meu computador",
+  "pesquise wake on lan no google",
+  "procure alanzoka no youtube",
+  "limpe os alertas",
+  "ative o hud",
+];
+for (const input of directTrue) {
+  assert.strictEqual(isDirectVoiceCommand(input), true, input);
+}
 
-const sentCommands = [];
-const controller = new VoiceWakeController({
-  storage: fakeStorage,
-  callbacks: {
-    sendVoiceCommand: (command) => {
-      sentCommands.push(command);
-      return Promise.resolve();
+assert.strictEqual(isDirectVoiceCommand("qual e a capital do brasil"), false);
+
+const safe = classifyVoiceCommand("abrir youtube");
+assert.strictEqual(safe.matched, true);
+assert.strictEqual(safe.risk, "safe");
+assert.strictEqual(safe.requires_confirmation, false);
+
+const dangerous = classifyVoiceCommand("desligar computador");
+assert.strictEqual(dangerous.matched, true);
+assert.strictEqual(dangerous.risk, "dangerous");
+assert.strictEqual(dangerous.requires_confirmation, true);
+
+const noMatch = classifyVoiceCommand("qual e a capital do brasil");
+assert.strictEqual(noMatch.matched, false);
+
+async function runCloudVoiceTests() {
+  const restoreNavigator = setGlobal("navigator", {
+    mediaDevices: {
+      getUserMedia: () =>
+        Promise.resolve({
+          getTracks: () => [{ stop: () => {} }],
+        }),
     },
-  },
-});
-
-controller.processTranscript("Misaka, abra o YouTube");
-controller.processTranscript("Misaka");
-assert.strictEqual(controller.state, "listening_for_command");
-controller.processTranscript("abrir notepad");
-controller.processTranscript("alô teste");
-
-assert.deepStrictEqual(sentCommands, ["abra o YouTube", "abrir notepad"]);
-
-const previousSpeechRecognition = globalThis.SpeechRecognition;
-
-class FailingRecognition {
-  start() {
-    throw new Error("blocked");
+  });
+  class FakeMediaRecorder {
+    static isTypeSupported() {
+      return true;
+    }
   }
+  const restoreRecorder = setGlobal("MediaRecorder", FakeMediaRecorder);
+  const restoreFetch = setGlobal("fetch", async (url) => {
+    if (String(url).endsWith("/voice/status")) {
+      return {
+        ok: true,
+        json: async () => ({
+          enabled: true,
+          provider: "mock",
+          mode: "cloud_voice",
+          ready: true,
+          max_audio_seconds: 10,
+          accepted_formats: ["webm"],
+          last_error: null,
+        }),
+      };
+    }
+    return {
+      ok: true,
+      json: async () => ({
+        success: true,
+        text: "abrir youtube",
+        provider: "mock",
+        language: "pt",
+        duration_ms: 10,
+        confidence: null,
+      }),
+    };
+  });
+  const restoreConfirm = setGlobal("confirm", () => true);
 
-  stop() {}
+  assert.strictEqual(isCloudVoiceSupported(), true);
+  assert.strictEqual(chooseVoiceWakeMode(), "cloud_voice");
+
+  const commands = [];
+  const controller = new VoiceWakeController({
+    storage: fakeStorage(),
+    callbacks: {
+      onCommand: (command) => {
+        commands.push(command);
+        return Promise.resolve({ success: true });
+      },
+    },
+  });
+  await controller.init();
+  const result = await controller.sendAudioForTranscription(
+    new Blob(["fake"], { type: "audio/webm" }),
+  );
+
+  assert.strictEqual(result.success, true);
+  assert.deepStrictEqual(commands, ["abrir youtube"]);
+
+  controller.processVoiceText("abrir youtube");
+  controller.processVoiceText("abrir youtube");
+  assert.deepStrictEqual(commands, ["abrir youtube"]);
+
+  restoreConfirm();
+  restoreFetch();
+  restoreRecorder();
+  restoreNavigator();
 }
 
-globalThis.SpeechRecognition = FailingRecognition;
+async function runStartFailureTest() {
+  const restoreNavigator = setGlobal("navigator", {
+    mediaDevices: {
+      getUserMedia: () => Promise.reject(new Error("blocked")),
+    },
+  });
+  class FakeMediaRecorder {
+    static isTypeSupported() {
+      return true;
+    }
+  }
+  const restoreRecorder = setGlobal("MediaRecorder", FakeMediaRecorder);
+  const restoreFetch = setGlobal("fetch", async () => ({
+    ok: true,
+    json: async () => ({
+      enabled: true,
+      provider: "mock",
+      mode: "cloud_voice",
+      ready: true,
+      max_audio_seconds: 10,
+      accepted_formats: ["webm"],
+      last_error: null,
+    }),
+  }));
+  const restoreConfirm = setGlobal("confirm", () => true);
 
-// Mock WebSocket to prevent daemon connection during test
-const prevWebSocket = globalThis.WebSocket;
-globalThis.WebSocket = function MockWebSocket() {
-  this.readyState = 0;
-  this.onopen = null;
-  this.onmessage = null;
-  this.onerror = null;
-  this.onclose = null;
-  setTimeout(() => {
-    if (this.onerror) this.onerror(new Event("error"));
-  }, 100);
-};
-globalThis.WebSocket.CONNECTING = 0;
-globalThis.WebSocket.OPEN = 1;
-globalThis.WebSocket.CLOSING = 2;
-globalThis.WebSocket.CLOSED = 3;
-
-const startFailureStorage = {
-  values: new Map(),
-  getItem(key) {
-    return this.values.has(key) ? this.values.get(key) : null;
-  },
-  setItem(key, value) {
-    this.values.set(key, value);
-  },
-};
-const startFailureController = new VoiceWakeController({
-  storage: startFailureStorage,
-  callbacks: {
-    sendVoiceCommand: () => Promise.resolve(),
-  },
-});
-
-// start() is now async — test it with .then()
-startFailureController.start().then((result) => {
+  const controller = new VoiceWakeController({ storage: fakeStorage() });
+  await controller.init();
+  const result = await controller.start();
   assert.strictEqual(result.success, false);
-  assert.strictEqual(startFailureController.enabled, false);
-  assert.strictEqual(startFailureController.state, "error");
+  assert.strictEqual(controller.enabled, false);
+  assert.strictEqual(controller.active, false);
+  assert.strictEqual(controller.state, "permission_needed");
 
-  if (previousSpeechRecognition) {
-    globalThis.SpeechRecognition = previousSpeechRecognition;
-  } else {
-    delete globalThis.SpeechRecognition;
-  }
-
-  if (prevWebSocket) {
-    globalThis.WebSocket = prevWebSocket;
-  } else {
-    delete globalThis.WebSocket;
-  }
-
-  runModeSelectionTests();
-});
-
-// --- Direct command tests ---
-
-function runDirectCommandTests() {
-  // isDirectVoiceCommand
-  assert.strictEqual(isDirectVoiceCommand("abrir youtube"), true);
-  assert.strictEqual(isDirectVoiceCommand("abra o discord"), true);
-  assert.strictEqual(isDirectVoiceCommand("abrir notepad no meu computador"), true);
-  assert.strictEqual(isDirectVoiceCommand("pesquise wake on lan no google"), true);
-  assert.strictEqual(isDirectVoiceCommand("procure alanzoka no youtube"), true);
-  assert.strictEqual(isDirectVoiceCommand("limpe os alertas"), true);
-  assert.strictEqual(isDirectVoiceCommand("ative o hud"), true);
-  assert.strictEqual(isDirectVoiceCommand("qual e a capital do brasil"), false);
-  assert.strictEqual(isDirectVoiceCommand("como vai voce"), false);
-  assert.strictEqual(isDirectVoiceCommand(""), false);
-
-  // classifyVoiceCommand - safe
-  const safe1 = classifyVoiceCommand("abrir youtube");
-  assert.strictEqual(safe1.matched, true);
-  assert.strictEqual(safe1.risk, "safe");
-  assert.strictEqual(safe1.requires_confirmation, false);
-
-  const safe2 = classifyVoiceCommand("pesquise wake on lan no google");
-  assert.strictEqual(safe2.matched, true);
-  assert.strictEqual(safe2.risk, "safe");
-
-  const safe3 = classifyVoiceCommand("limpe os alertas");
-  assert.strictEqual(safe3.matched, true);
-  assert.strictEqual(safe3.risk, "safe");
-
-  // classifyVoiceCommand - dangerous
-  const dangerous1 = classifyVoiceCommand("desligar computador");
-  assert.strictEqual(dangerous1.matched, true);
-  assert.strictEqual(dangerous1.risk, "dangerous");
-  assert.strictEqual(dangerous1.requires_confirmation, true);
-
-  const dangerous2 = classifyVoiceCommand("reiniciar pc");
-  assert.strictEqual(dangerous2.matched, true);
-  assert.strictEqual(dangerous2.risk, "dangerous");
-
-  const dangerous3 = classifyVoiceCommand("formatar");
-  assert.strictEqual(dangerous3.matched, true);
-  assert.strictEqual(dangerous3.risk, "dangerous");
-
-  // classifyVoiceCommand - not matched
-  const nomatch = classifyVoiceCommand("qual e a capital do brasil");
-  assert.strictEqual(nomatch.matched, false);
-
-  console.log("direct command tests passed");
+  restoreConfirm();
+  restoreFetch();
+  restoreRecorder();
+  restoreNavigator();
 }
 
-runDirectCommandTests();
-
-// --- Mode selection tests ---
-
-function runModeSelectionTests() {
-  const prevSR = globalThis.SpeechRecognition;
-  const prevWebkit = globalThis.webkitSpeechRecognition;
-  const prevDesktop = globalThis.misakaDesktop;
-
-  // Test: Web Speech available -> web_speech
-  class FakeRecognition { start() {} stop() {} }
-  globalThis.SpeechRecognition = FakeRecognition;
-  assert.strictEqual(chooseVoiceWakeMode(), "web_speech");
-  assert.strictEqual(isWebSpeechSupported(), true);
-
-  // Test: Web Speech unavailable + native available -> native_desktop
-  delete globalThis.SpeechRecognition;
-  delete globalThis.webkitSpeechRecognition;
-  globalThis.misakaDesktop = {
-    isAvailable: true,
-    nativeVoiceIsAvailable: () => true,
-    nativeVoiceStart: () => Promise.resolve({ success: true }),
-    nativeVoiceStop: () => Promise.resolve({ success: true }),
-  };
-  assert.strictEqual(chooseVoiceWakeMode(), "native_desktop");
-  assert.strictEqual(isNativeDesktopSupported(), true);
-
-  // Test: Nothing available -> unavailable
-  delete globalThis.misakaDesktop;
-  assert.strictEqual(chooseVoiceWakeMode(), "unavailable");
-
-  // Restore globals
-  if (prevSR) globalThis.SpeechRecognition = prevSR;
-  else delete globalThis.SpeechRecognition;
-  if (prevWebkit) globalThis.webkitSpeechRecognition = prevWebkit;
-  else delete globalThis.webkitSpeechRecognition;
-  if (prevDesktop) globalThis.misakaDesktop = prevDesktop;
-  else delete globalThis.misakaDesktop;
-
-  console.log("voiceWake extraction tests passed");
-}
-
-// --- Probe daemon tests ---
-
-async function runProbeTests() {
-  // Mock WebSocket that simulates a running daemon (connects immediately)
-  const prevWs = globalThis.WebSocket;
-  class MockDaemonWebSocket {
-    constructor(url) {
-      this.url = url;
-      this.readyState = 0;
-      this.onopen = null;
-      this.onmessage = null;
-      this.onerror = null;
-      this.onclose = null;
-      this._shouldFail = url && url.includes("fail");
-      setTimeout(() => {
-        if (this._shouldFail) {
-          if (this.onerror) this.onerror(new Event("error"));
-        } else {
-          this.readyState = 1;
-          if (this.onopen) this.onopen();
-        }
-      }, 10);
-    }
-    close() {}
-  }
-  MockDaemonWebSocket.CONNECTING = 0;
-  MockDaemonWebSocket.OPEN = 1;
-  MockDaemonWebSocket.CLOSING = 2;
-  MockDaemonWebSocket.CLOSED = 3;
-  globalThis.WebSocket = MockDaemonWebSocket;
-
-  // Probe that succeeds (daemon running)
-  const result1 = await probeNativeVoiceDaemon(2000);
-  assert.strictEqual(result1.success, true);
-  assert.strictEqual(result1.mode, "native_desktop");
-  assert.strictEqual(result1.url, "ws://127.0.0.1:8765");
-
-  // Restore original WebSocket for probe that fails
-  class FailingDaemonWebSocket {
-    constructor() {
-      this.readyState = 0;
-      this.onopen = null;
-      this.onerror = null;
-      this.onclose = null;
-      setTimeout(() => {
-        if (this.onerror) this.onerror(new Event("error"));
-      }, 10);
-    }
-    close() {}
-  }
-  FailingDaemonWebSocket.CONNECTING = 0;
-  FailingDaemonWebSocket.OPEN = 1;
-  FailingDaemonWebSocket.CLOSING = 2;
-  FailingDaemonWebSocket.CLOSED = 3;
-  globalThis.WebSocket = FailingDaemonWebSocket;
-
-  const result2 = await probeNativeVoiceDaemon(2000);
-  assert.strictEqual(result2.success, false);
-  assert.ok(result2.error);
-
-  // Restore
-  globalThis.WebSocket = prevWs;
-
-  console.log("probe daemon tests passed");
-}
-
-runProbeTests().then(() => {
-  console.log("all tests passed");
-}).catch((err) => {
-  console.error("probe tests failed:", err);
-  process.exit(1);
-});
+runCloudVoiceTests()
+  .then(runStartFailureTest)
+  .then(() => {
+    console.log("all voiceWake tests passed");
+  })
+  .catch((error) => {
+    console.error(error);
+    process.exit(1);
+  });

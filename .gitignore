@@ -36,3 +36,4 @@ Thumbs.db
 # Desktop build
 desktop/dist/
 desktop/build/
+desktop/voice/models/

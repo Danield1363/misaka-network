@@ -34,9 +34,9 @@ def parse_web_entities(message: str) -> ParsedEntities:
 
     content_patterns = [
         (r"canal\s+(?:do|da|de)\s+(.+?)(?:\s+no\s+|\s*$)", "channel"),
-        (r"vídeo\s+(?:do|da|de)\s+(.+?)(?:\s+de\s+|\s+no\s+|\s*$)", "video"),
-        (r"vídeo\s+de\s+(.+?)(?:\s+no\s+|\s*$)", "video"),
-        (r"música\s+(.+?)(?:\s+no\s+|\s*$)", "music"),
+        (r"(?:vídeo|video)\s+(?:do|da|de)\s+(.+?)(?:\s+de\s+|\s+no\s+|\s*$)", "video"),
+        (r"(?:vídeo|video)\s+de\s+(.+?)(?:\s+no\s+|\s*$)", "video"),
+        (r"(?:música|musica)\s+(.+?)(?:\s+no\s+|\s*$)", "music"),
         (r"playlist\s+(.+?)(?:\s+no\s+|\s*$)", "playlist"),
     ]
     for pattern, content_type in content_patterns:

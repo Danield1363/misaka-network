@@ -1,174 +1,93 @@
-# Quality Gate — Misaka v0.3.6
+# Quality Gate - Misaka v0.3.7
 
-Use this checklist before any merge or release.
+**Fase:** RFC-0012.10 - Misaka Final Desktop Stability, Cloud Voice & Command System  
+**Verificado em:** 2026-07-03  
+**Branch:** `feature/rfc-0012-10-final-desktop-cloud-voice`
 
-**Last verified:** 2026-07-02 (v0.3.6 — Hybrid Voice Wake: Web Speech + Native Desktop Fallback)
+## Sintaxe
 
-## Syntax Validation
+| Teste | Resultado esperado | Resultado obtido | Status |
+| --- | --- | --- | --- |
+| `node --check dashboard/app.js` | Sem SyntaxError | Sem erro | PASS |
+| `node --check dashboard/config.js` | Sem SyntaxError | Sem erro | PASS |
+| `node --check dashboard/voiceWake.js` | Sem SyntaxError | Sem erro | PASS |
+| `node --check dashboard/voiceWake.test.js` | Sem SyntaxError | Sem erro | PASS |
+| `node --check desktop/main.js` | Sem SyntaxError | Sem erro | PASS |
+| `node --check desktop/preload.js` | Sem SyntaxError | Sem erro | PASS |
+| `node --check desktop/voice/nativeVoiceBridge.js` | Sem SyntaxError | Sem erro | PASS |
 
-### Comando: `node --check dashboard/app.js`
-- Resultado esperado: Sem SyntaxError.
-- Resultado obtido: OK
-- Status: **PASS**
+## Testes Automatizados
 
-### Comando: `node --check dashboard/voiceWake.js`
-- Resultado esperado: Sem SyntaxError.
-- Resultado obtido: OK
-- Status: **PASS**
+| Teste | Resultado esperado | Resultado obtido | Status |
+| --- | --- | --- | --- |
+| `node dashboard/voiceWake.test.js` | Normalizacao, wake phrase, direct command, risco, mock transcription e debounce | `all voiceWake tests passed` | PASS |
+| `pytest` | Suite Python executa | Falhou por shim local quebrado: Hermes aponta para Python 3.11 inexistente | FAIL (ambiente) |
+| `python -m pytest` | Suite Python executa | `324 passed, 1 warning in 9.68s` | PASS |
+| Warning do pytest | Sem impacto funcional | `.pytest_cache` sem permissao de escrita | WARN |
 
-### Comando: `node --check dashboard/voiceWake.test.js`
-- Resultado esperado: Sem SyntaxError.
-- Resultado obtido: OK
-- Status: **PASS**
+## Desktop Runtime
 
-### Comando: `node --check dashboard/config.js`
-- Resultado esperado: Sem SyntaxError.
-- Resultado obtido: OK
-- Status: **PASS**
+| Teste | Resultado esperado | Resultado obtido | Status |
+| --- | --- | --- | --- |
+| `cd desktop && npm install` | Dependencias instaladas | `changed 1 package in 3s` | PASS |
+| `cd desktop && npm start` | Electron abre e nao fecha sozinho | 4 processos Electron vivos apos 12s; processo npm ainda ativo | PASS |
+| Log do desktop | Sem EPIPE no start | `misaka-desktop.log` recebeu preload path, sem EPIPE no trecho verificado | PASS |
+| Dashboard abre | Janela Electron carrega dashboard local | `npm start` criou processos Electron; sem erro no log | PASS |
+| App nao abre `/docs` | URL do dashboard valida | `getDashboardUrl()` bloqueia `/docs`/`/redoc`; teste runtime nao mostrou erro | PASS |
+| Tray wake enable/disable | Evento enviado ao renderer apos load | Implementado com fila `pendingWakeWordEnabled`; teste manual de clique no tray nao executado | PARTIAL |
+| `cd desktop && npm run dist` | NSIS + portable gerados | `Misaka Network Setup 0.3.7.exe` e `Misaka Network 0.3.7.exe` criados em `desktop/dist` | PASS |
 
-### Comando: `node --check desktop/main.js`
-- Resultado esperado: Sem SyntaxError.
-- Resultado obtido: OK
-- Status: **PASS**
+## Backend Voice
 
-### Comando: `node --check desktop/preload.js`
-- Resultado esperado: Sem SyntaxError.
-- Resultado obtido: OK
-- Status: **PASS**
+| Teste | Resultado esperado | Resultado obtido | Status |
+| --- | --- | --- | --- |
+| `GET /api/voice/status` | Provider mock pronto | Coberto por `test_voice_status_mock` | PASS |
+| `POST /api/voice/transcribe` mock | Retorna `VOICE_MOCK_TRANSCRIPT` | Coberto por `test_voice_transcribe_mock` | PASS |
+| Sem arquivo | Erro seguro | `audio_missing`, `Nenhum audio recebido.` | PASS |
+| Provider OpenAI sem chave | Erro seguro | `voice_provider_not_configured` | PASS |
+| Provider real OpenAI | Transcricao real | Nao executado: `OPENAI_API_KEY` ausente no ambiente | NOT RUN |
 
-### Comando: `node dashboard/voiceWake.test.js`
-- Resultado esperado: wake phrase extraction + two-step flow + start failure.
-- Resultado obtido: `voiceWake extraction tests passed`
-- Status: **PASS**
+## Comandos Operacionais
 
-### Comando: `python -m pytest`
-- Resultado esperado: All tests pass.
-- Resultado obtido: **308 passed** in 7.01s
-- Status: **PASS**
+| Comando | Resultado esperado | Resultado obtido | Status |
+| --- | --- | --- | --- |
+| `abrir notepad` | `client_action.open_app=notepad` | Coberto por `test_chat_desktop_apps_do_not_fall_to_llm` | PASS |
+| `abrir explorer` | `client_action.open_app=explorer` | Coberto por teste | PASS |
+| `abrir calculadora` | `client_action.open_app=calculator` | Coberto por teste | PASS |
+| `abrir discord` | `client_action.open_app=discord` | Coberto por teste | PASS |
+| `abrir vscode` | `client_action.open_app=vscode` | Coberto por teste | PASS |
+| `Misaka, abra o YouTube` | `client_action.open_url=https://www.youtube.com` | Coberto por teste | PASS |
+| `abrir video do alanzoka de minecraft` | URL de busca YouTube codificada | Coberto por teste | PASS |
+| `pesquise wake on lan no google` | Search Google | Coberto por teste | PASS |
+| `pesquise misaka network no github` | Search GitHub | Coberto por teste | PASS |
+| `pesquise cobblemon no modrinth` | Search Modrinth | Coberto por teste | PASS |
+| `procure atm 10 no curseforge` | Search CurseForge | Coberto por teste | PASS |
+| `desligar computador` | Requer confirmacao | Coberto por teste | PASS |
 
-### Comando: `POST /api/chat` com `"abrir discord"` (backend local)
-- Resultado esperado: `agent=command_router`, `client_action.open_app=discord`, resposta curta.
-- Resultado obtido: PASS — resposta `"Vou abrir o Discord no seu computador..."`, sem tutorial.
-- Status: **PASS**
+## Dashboard Voice
 
-### Limitação conhecida: API remota (Northflank)
-- A URL `https://p01--misaka-network--nf5wq7twf8xg.code.run/api` ainda retorna resposta LLM/mock para `"abrir discord"`.
-- Dashboard/Electron agora defaultam para `http://127.0.0.1:8000/api` em modo local/file/Electron.
-- Deploy do backend atualizado é necessário para produção remota.
+| Teste | Resultado esperado | Resultado obtido | Status |
+| --- | --- | --- | --- |
+| Cloud Voice como modo principal | `voice_input_mode=cloud_voice` default | Implementado em `VoiceWakeController` e UI | PASS |
+| Web Speech fallback | Opcional, nao principal | Implementado como `web_speech_fallback` | PASS |
+| Native daemon fallback | Opcional | Mantido via `nativeVoice*` bridge | PASS |
+| MediaRecorder indisponivel | Erro claro | Mensagem: `MediaRecorder nao disponivel neste ambiente.` | PASS |
+| Microfone negado | Erro claro e sem estado falso | Simulado no teste JS; `enabled=false`, `active=false` | PASS |
+| Fala real no Chrome/Edge | Capturar audio real e executar comando | Nao executado: requer permissao/microfone humano | NOT RUN |
+| Fala real no Electron | Capturar audio real e executar comando | Nao executado: requer permissao/microfone humano | NOT RUN |
+| Vivaldi | Cloud Voice sem Web Speech | Nao executado manualmente | NOT RUN |
 
-## Syntax Validation (tabela resumida)
+## Desktop Bridge
 
-| Command | Expected | Status |
-|---------|----------|--------|
-| `python -m py_compile backend/app/brain/engine.py` | OK | PASS |
-| `python -m py_compile backend/app/api/commands.py` | OK | PASS |
-| `python -m py_compile backend/app/commands/router.py` | OK | PASS |
-| `python -m py_compile backend/app/commands/confirmations.py` | OK | PASS |
-| `python -m py_compile` (all backend/app/*.py) | OK | PASS |
-| `node --check dashboard/app.js` | OK | PASS |
-| `node --check dashboard/voiceWake.js` | OK | PASS |
-| `node --check dashboard/voiceWake.test.js` | OK | PASS |
-| `node --check dashboard/config.js` | OK | PASS |
-| `node --check desktop/main.js` | OK | PASS |
-| `node --check desktop/preload.js` | OK | PASS |
-| `node --check desktop/control/*.js` | OK | PASS |
+| Teste | Resultado esperado | Resultado obtido | Status |
+| --- | --- | --- | --- |
+| `openApp` allowlist | Sem shell arbitrario | Allowlist mantida para notepad/explorer/calculator/discord/vscode/chrome/edge/browser/cmd/powershell | PASS |
+| `openUrl` seguro | Apenas http/https | Validacao em main e fallback do dashboard | PASS |
+| Popup falso | Nao reportar erro quando fallback dispara | `openUrlAction()` usa Electron primeiro e anchor fallback no navegador | PASS |
+| Abrir apps reais via UI | Notepad/Explorer/Calculadora/etc. | Nao executado interativamente nesta rodada | NOT RUN |
+| Abrir URL real via UI | YouTube/canal Alanzoka | Nao executado interativamente nesta rodada | NOT RUN |
 
-## Backend (308 tests)
+## Resultado
 
-| Test | Command | Expected | Status |
-|------|---------|----------|--------|
-| Health endpoint | `test_health` | 200, status=ok | PASS |
-| Status endpoint | `test_root_status` | version, provider | PASS |
-| Overview endpoint | `test_overview` | full status + alerts | PASS |
-| LLM status | `test_llm_status` | provider, models, cooldowns | PASS |
-| LLM fallback | `test_llm_fallback` | fallback chain, cooldowns | PASS |
-| Chat conversation | `test_chat` | response, agent, metadata | PASS |
-| Chat commands | `test_chat_commands` | ui_effect + client_action correct | PASS |
-| Command router | `test_command_router` | intent detection, routing | PASS |
-| Commands API | `test_commands_api` | route, confirmations | PASS |
-| Notifications ack | `test_notifications_ack` | ack-all, summary | PASS |
-| Android bridge | `test_android_bridge` | queue lifecycle | PASS |
-| Android flag | `test_android_bridge_flag` | ANDROID_BRIDGE_ENABLED | PASS |
-| Action approvals | `test_action_approvals` | create, approve, deny | PASS |
-| Suffix no duplicate | `test_suffix_no_duplicate` | suffix once | PASS |
-| Settings | `test_settings` | get, update, reset | PASS |
-| Devices | `test_devices` | register, heartbeat, list | PASS |
-| Desktop package | `test_desktop_package` | extraResources includes dashboard | PASS |
-| Full suite | `python -m pytest` | 308 passed | PASS |
-| Voice wake extraction | `node dashboard/voiceWake.test.js` | wake phrase + two-step command flow | PASS |
-
-## Operational Actions
-
-| Command | Expected client action | Expected result |
-|---------|------------------------|-----------------|
-| `abrir notepad no meu computador` | `open_app` / `notepad` | Bloco de Notas opens through desktop bridge |
-| `abra explorer` | `open_app` / `explorer` | Explorador de Arquivos opens through desktop bridge |
-| `abra o youtube` | `open_url` / `https://www.youtube.com` | YouTube opens as a page |
-| `abra o canal do alanzoka no youtube` | `open_url` / YouTube search URL | YouTube channel search opens |
-| `pesquisar wake on lan no Google` | `search_web` / `google` | Google search opens |
-| `pesquisar alanzoka no YouTube` | `search_web` / `youtube` | YouTube search opens |
-
-## Dashboard
-
-| Check | Command | Expected | Status |
-|-------|---------|----------|--------|
-| Loads without errors | Open browser | No console errors | PASS |
-| Shows LLM status | Check sidebar | Provider + model | PASS |
-| Chat works | Send message | Response appears | PASS |
-| Auto-speak | Enable + send messages | All responses spoken | PASS |
-| HUD toggle | Click HUD button | Body class toggles | PASS |
-| Settings drawer | Click gear | Opens, ESC closes | PASS |
-| Alerts load | Check sidebar | Alert count correct | PASS |
-| Ack-all | Click "✓ All" | Alerts cleared | PASS |
-| Clear chat | Click "Clear" | Chat resets | PASS |
-| Toast system | Perform actions | Toasts appear | PASS |
-| Voice controls | Test/Stop buttons | Work correctly | PASS |
-
-## Desktop
-
-| Check | Command | Expected | Status |
-|-------|---------|----------|--------|
-| npm install | `cd desktop && npm install` | Success | PASS |
-| npm start | `npm start` | Window opens | PASS |
-| npm run debug | `npm run debug` | Logs visible | PASS |
-| App stays open | Click X | Minimizes to tray | PASS |
-| Opens dashboard | Check window | Not /docs | PASS |
-| Tray works | Right-click tray | Menu appears | PASS |
-| Always on top | Toggle | Window stays on top | PASS |
-| npm run dist | `npm run dist` | .exe generated | PASS |
-| App launcher allowlist | Unknown app | Returns error, not arbitrary open | PASS |
-
-## Security
-
-| Check | Method | Status |
-|-------|--------|--------|
-| No tokens in frontend | Code review | PASS |
-| No tokens hardcoded | .env only | PASS |
-| No secrets in desktop bundle | extraResources only | PASS |
-| Dangerous actions blocked | permissions.js BLOCKED_ACTIONS | PASS |
-| Sensitive actions require confirmation | ConfirmationManager | PASS |
-| App launcher uses allowlist | WINDOWS_APP_LAUNCHERS | PASS |
-| IPC uses contextIsolation | preload.js contextBridge | PASS |
-| Error messages safe | No internals leaked | PASS |
-
-## Voice Wake
-
-| Check | Method | Expected | Status |
-|-------|--------|----------|--------|
-| Wake controller syntax | `node --check dashboard/voiceWake.js` | OK | PASS |
-| Wake phrase extraction | `node dashboard/voiceWake.test.js` | "Misaka, abra..." extracts command | PASS |
-| Two-step command flow | `node dashboard/voiceWake.test.js` | "Misaka" then command sends command | PASS |
-| Recognition start failure | `node dashboard/voiceWake.test.js` | start failure sets error and does not listen | PASS |
-| Mode: Web Speech available | `node dashboard/voiceWake.test.js` | chooseVoiceWakeMode returns "web_speech" | PASS |
-| Mode: Native available | `node dashboard/voiceWake.test.js` | chooseVoiceWakeMode returns "native_desktop" | PASS |
-| Mode: Nothing available | `node dashboard/voiceWake.test.js` | chooseVoiceWakeMode returns "unavailable" | PASS |
-| Native bridge syntax | `node --check desktop/voice/nativeVoiceBridge.js` | OK | PASS |
-| Preload native voice methods | `node --check desktop/preload.js` | nativeVoice* methods exposed | PASS |
-| Electron main native IPC | `node --check desktop/main.js` | native-voice:* handlers registered | PASS |
-| Missing SpeechRecognition | Code path | Shows unavailable/error state, not listening | PASS |
-| Microphone denied | Code path | Shows "Permissão de microfone negada." | PASS |
-| Electron media permission | Code review | `session.defaultSession.setPermissionRequestHandler` allows media/microphone | PASS |
-| Tray wake controls | Code review | Tray sends wake enable/disable event to renderer | PASS |
-| Native voice docs | `docs/VOICE_WAKE.md` + `docs/DESKTOP_VOICE_SETUP.md` | Setup instructions documented | PASS |
-| Electron dashboard launch | `cd desktop && npm start` | Electron processes stay running after launch | PASS |
-| Real microphone phrase | Manual Chrome/Edge microphone test | Requires human speech and browser permission | MANUAL |
+Automatizado e empacotamento: PASS.  
+Testes manuais com microfone, Vivaldi e clique/fala na UI: NOT RUN nesta rodada, documentados sem marcar PASS.

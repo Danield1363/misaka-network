@@ -21,6 +21,7 @@ from app.api.approvals import router as approvals_router
 from app.api.commands import router as commands_router
 from app.api.settings import router as settings_router
 from app.api.devices import router as devices_router
+from app.voice.routes import router as voice_router
 
 api_router = APIRouter()
 
@@ -55,6 +56,7 @@ api_router.include_router(notification_actions_router)
 api_router.include_router(ui_config_router)
 api_router.include_router(voice_config_router)
 api_router.include_router(settings_router)
+api_router.include_router(voice_router)
 
 # Devices
 api_router.include_router(android_router)

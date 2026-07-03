@@ -1,70 +1,73 @@
-# Security Review — Misaka v0.3 Genesis
+# Security Review - Misaka v0.3.7
 
-## Current Risks
+## Principios
 
-| Risk | Level | Status |
-|------|-------|--------|
-| API key exposure | HIGH | Mitigated — keys in .env only, never in frontend |
-| Shell injection | HIGH | Mitigated — no arbitrary shell commands allowed |
-| Token leakage | HIGH | Mitigated — tokens never in dashboard or desktop bundle |
-| Action abuse | MEDIUM | Mitigated — confirmation system for sensitive/dangerous |
-| Data exfiltration | MEDIUM | Mitigated — no raw audio sent, only text |
-| Supply chain | LOW | Mitigated — dependencies pinned, no auto-updates |
+- Nenhuma API key no frontend, preload ou bundle desktop.
+- Sem shell arbitrario.
+- Apps locais abertos apenas por allowlist.
+- Audio nao e salvo por padrao.
+- Comandos perigosos exigem confirmacao ou sao bloqueados pela voz.
 
-## Blocked Actions (Critical — Never Execute)
+## Riscos
 
-- `shutdown` — Shutdown PC
-- `restart` — Restart PC
-- `delete_files` — Delete files
-- `shell_arbitrary` — Run arbitrary commands
-- `install_software` — Install software
-- `modify_system` — Modify system settings
+| Risco | Nivel | Mitigacao |
+| --- | --- | --- |
+| Exposicao de API key | Alto | `OPENAI_API_KEY`, `GEMINI_API_KEY` e demais chaves ficam apenas no backend/env |
+| Shell injection | Alto | Bridge Electron nao aceita comando shell arbitrario |
+| Abertura de app indevido | Medio | `openApp` usa allowlist fixa |
+| URL insegura | Medio | `openUrl` aceita apenas `http://` e `https://` |
+| Captura de audio sem consentimento | Alto | Escuta desligada por padrao e aviso antes da primeira ativacao |
+| Persistencia de audio | Alto | Backend usa arquivo temporario e remove no `finally` |
+| Provider real sem configuracao | Medio | Retorna erro seguro, sem stack trace |
+| EPIPE/stdout crash | Medio | Logs em arquivo e handlers de stdout/stderr |
 
-These actions are defined in `desktop/control/permissions.js` and `BLOCKED_ACTIONS` set. They return an error if attempted.
+## Chaves
 
-## Actions Requiring Confirmation
+| Variavel | Local | Observacao |
+| --- | --- | --- |
+| `GEMINI_API_KEY` | Backend `.env` | Nunca injetar no dashboard |
+| `OPENAI_API_KEY` | Backend `.env` | Usada apenas pelo provider de transcricao |
+| `SUPABASE_SERVICE_ROLE_KEY` | Backend `.env` | Nunca commitar |
+| `NOTIFICATION_INGEST_TOKEN` | Backend `.env` | Bridge de notificacoes |
 
-| Action | Risk Level | Requires |
-|--------|-----------|----------|
-| Close app | SENSITIVE | One-time approval |
-| Send message | SENSITIVE | One-time approval |
-| Change settings | SENSITIVE | One-time approval |
-| Run terminal command | SENSITIVE | One-time approval |
-| Download file | SENSITIVE | One-time approval |
-| Clear chat history | SAFE | None |
-| Open app/URL | SAFE | None |
-| Read status | SAFE | None |
+## Voice Privacy
 
-## Token Configuration
+- `VOICE_PROVIDER=mock` nao envia audio a terceiros.
+- `VOICE_PROVIDER=openai` so funciona com chave no backend.
+- O dashboard envia audio ao backend configurado apenas para gerar texto de comando.
+- Audio recebido por `/api/voice/transcribe` e validado por tamanho/formato.
+- Formatos aceitos: `webm`, `ogg`, `wav`, `mp3`, `m4a`.
+- Arquivos vazios, grandes ou com extensao invalida sao rejeitados.
 
-| Token | Location | Purpose |
-|-------|----------|---------|
-| GEMINI_API_KEY | `.env` | Gemini LLM access |
-| SUPABASE_SERVICE_ROLE_KEY | `.env` | Database access |
-| NOTIFICATION_INGEST_TOKEN | `.env` | Bridge authentication |
+## Electron
 
-**Never commit these values.** Use `.env.example` as template.
+- `contextIsolation: true`.
+- `nodeIntegration: false`.
+- Preload expõe apenas funções whitelisted.
+- `ipcRenderer` nao e exposto.
+- Permissoes Electron: `media`/`microphone` permitidas; demais negadas.
+- Logs ficam em `%APPDATA%\misaka-desktop\misaka-desktop.log`.
 
-## What Never to Commit
+## Allowlist De Apps
 
-- `.env` files
-- `*.key` files
-- `credentials.json`
-- `service-account*.json`
-- `notified_alerts.json` (contains alert IDs)
-- `desktop/node_modules/` (already gitignored)
+- `notepad`
+- `explorer`
+- `calculator`
+- `discord`
+- `vscode`
+- `chrome`
+- `edge`
+- `browser`
+- `cmd`
+- `powershell`
 
-## Dashboard Security
+Mesmo com `cmd` e `powershell` na allowlist, a bridge apenas abre o app permitido. Ela nao recebe comandos arbitrarios para executar dentro deles.
 
-- Uses `textContent` (not `innerHTML`) — XSS safe
-- CORS configured for specific origins only
-- No inline scripts from external sources
-- API keys never injected into frontend
+## Nao Commitar
 
-## Desktop Security
-
-- `contextIsolation: true` — Renderer can't access Node
-- `nodeIntegration: false` — No direct Node access from web
-- IPC bridge only exposes whitelisted functions
-- App launcher uses allowlist, not arbitrary commands
-- Preload script is the only bridge between main and renderer
+- `.env`
+- arquivos de chave
+- audio gravado
+- `desktop/node_modules/`
+- `desktop/dist/`
+- `desktop/voice/models/`

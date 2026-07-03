@@ -4,33 +4,48 @@ function invoke(channel, payload) {
   return ipcRenderer.invoke(channel, payload);
 }
 
+function invalid(error) {
+  return Promise.resolve({ success: false, error });
+}
+
+const wakeWordListeners = new Map();
+
 contextBridge.exposeInMainWorld("misakaDesktop", {
   isAvailable: true,
 
   openUrl: (url) => {
     if (typeof url !== "string") {
-      return Promise.resolve({ success: false, error: "URL invalida." });
+      return invalid("URL invalida.");
     }
     return invoke("desktop:open-url", url);
   },
 
   openApp: (appName) => {
     if (typeof appName !== "string") {
-      return Promise.resolve({ success: false, error: "Nome do app invalido." });
+      return invalid("Nome do app invalido.");
     }
     return invoke("desktop:open-app", appName);
   },
 
-  searchWeb: (query, provider) =>
-    invoke("desktop:search-web", { query, provider }),
+  searchWeb: (query, provider) => {
+    if (typeof query !== "string") {
+      return invalid("Query invalida.");
+    }
+    return invoke("desktop:search-web", {
+      query,
+      provider: typeof provider === "string" ? provider : "google",
+    });
+  },
 
   showNotification: (title, body) =>
-    invoke("desktop:show-notification", { title, body }),
+    invoke("desktop:show-notification", {
+      title: typeof title === "string" ? title : "Misaka",
+      body: typeof body === "string" ? body : "",
+    }),
 
   getSystemStatus: () => invoke("desktop:system-status"),
 
-  setHudMode: (enabled) =>
-    invoke("desktop:set-hud-mode", Boolean(enabled)),
+  setHudMode: (enabled) => invoke("desktop:set-hud-mode", Boolean(enabled)),
 
   setAlwaysOnTop: (enabled) =>
     invoke("desktop:set-always-on-top", Boolean(enabled)),
@@ -48,8 +63,19 @@ contextBridge.exposeInMainWorld("misakaDesktop", {
           : Boolean(payload);
       callback(enabled);
     };
+    wakeWordListeners.set(callback, listener);
     ipcRenderer.on("wake-word:set-enabled", listener);
-    return () => ipcRenderer.removeListener("wake-word:set-enabled", listener);
+    return () => {
+      ipcRenderer.removeListener("wake-word:set-enabled", listener);
+      wakeWordListeners.delete(callback);
+    };
+  },
+
+  removeWakeWordSetEnabledListener: (callback) => {
+    const listener = wakeWordListeners.get(callback);
+    if (!listener) return;
+    ipcRenderer.removeListener("wake-word:set-enabled", listener);
+    wakeWordListeners.delete(callback);
   },
 
   // --- Native Voice ---
@@ -58,17 +84,26 @@ contextBridge.exposeInMainWorld("misakaDesktop", {
   nativeVoiceDiagnostics: () => invoke("native-voice:diagnostics"),
 
   nativeVoiceStart: (modelPath) =>
-    invoke("native-voice:start", typeof modelPath === "string" ? modelPath : undefined),
+    invoke(
+      "native-voice:start",
+      typeof modelPath === "string" ? modelPath : undefined,
+    ),
 
   nativeVoiceStop: () => invoke("native-voice:stop"),
 
   nativeVoiceRestart: (modelPath) =>
-    invoke("native-voice:restart", typeof modelPath === "string" ? modelPath : undefined),
+    invoke(
+      "native-voice:restart",
+      typeof modelPath === "string" ? modelPath : undefined,
+    ),
 
   nativeVoiceStatus: () => invoke("native-voice:status"),
 
   nativeVoiceOpenFolder: (folderPath) =>
-    invoke("native-voice:open-folder", typeof folderPath === "string" ? folderPath : undefined),
+    invoke(
+      "native-voice:open-folder",
+      typeof folderPath === "string" ? folderPath : undefined,
+    ),
 
   nativeVoiceOpenDocs: () => invoke("native-voice:open-docs"),
 
@@ -76,7 +111,8 @@ contextBridge.exposeInMainWorld("misakaDesktop", {
     if (typeof callback !== "function") return () => {};
     const listener = (_event, data) => callback(data);
     ipcRenderer.on("native-voice:transcript", listener);
-    return () => ipcRenderer.removeListener("native-voice:transcript", listener);
+    return () =>
+      ipcRenderer.removeListener("native-voice:transcript", listener);
   },
 
   onNativeVoiceCommand: (callback) => {

@@ -1,91 +1,40 @@
-# Misaka Desktop App
+# Misaka Desktop
 
-App desktop da Misaka Network usando Electron.
+Electron shell for Misaka Network.
 
-## Instalação
+## Run
 
 ```bash
-cd desktop
 npm install
-```
-
-## Execução
-
-```bash
 npm start
 ```
 
-## Configuração
+## Build
 
-### Variáveis de Ambiente
-
-| Variável | Descrição | Padrão |
-|----------|-----------|--------|
-| `MISAKA_API_BASE_URL` | URL da API Misaka Core | `https://p01--misaka-network--*.code.run/api` |
-| `MISAKA_DASHBOARD_URL` | URL do dashboard | (vazio = usar local) |
-| `START_MINIMIZED` | Iniciar minimizado | `false` |
-| `ALWAYS_ON_TOP_DEFAULT` | Sempre no topo | `false` |
-| `TRANSPARENT_MODE_DEFAULT` | Modo transparente | `false` |
-
-### Dashboard
-
-O app desktop pode carregar a dashboard de duas formas:
-
-1. **Local (padrão):** Carrega os arquivos de `../dashboard/`
-2. **Remota:** Configure `MISAKA_DASHBOARD_URL` para uma URL remota
-
-**IMPORTANTE:** Não configure `MISAKA_DASHBOARD_URL` com `/docs` ou `/redoc`. O app detectará e mostrará erro.
-
-### Exemplos
-
-**Dashboard local (padrão):**
 ```bash
-npm start
+npm run dist
 ```
 
-**Dashboard remota:**
-```bash
-MISAKA_DASHBOARD_URL=https://misaka-dashboard.pages.dev npm start
+Outputs are written to `desktop/dist`.
+
+## Logs
+
+Runtime logs are written to:
+
+```text
+%APPDATA%\misaka-desktop\misaka-desktop.log
 ```
 
-**Com API customizada:**
-```bash
-MISAKA_API_BASE_URL=http://localhost:8000/api npm start
-```
+The app does not depend on stdout/stderr, so `EPIPE` does not crash the desktop process.
 
-## Funcionalidades
+## Voice
 
-- Dashboard visual com HUD
-- System tray
-- Notificações nativas do sistema
-- Always on top
-- Modo transparente/HUD
-- Alert polling
-- Deduplicação de notificações
+Cloud Voice is the main mode. The dashboard captures microphone audio with `getUserMedia`/`MediaRecorder`, sends it to `/api/voice/transcribe`, and then sends the transcribed command through `/api/chat`.
 
-## Funcionamento
+Web Speech and the native daemon are fallbacks only.
 
-1. O app tenta carregar `MISAKA_DASHBOARD_URL`
-2. Se não configurado, carrega `../dashboard/index.html` (local)
-3. Se não encontrar local, usa `https://misaka-dashboard.pages.dev`
-4. A API base é injetada na dashboard via JavaScript
+## Bridge
 
-## Solução de Problemas
+The preload exposes `window.misakaDesktop` with safe helpers for URL opening, app opening, notifications, HUD, always-on-top, focus, wake toggle events and optional native voice controls.
 
-### App abre /docs em vez da dashboard
-
-Configure `MISAKA_DASHBOARD_URL` corretamente:
-```bash
-MISAKA_DASHBOARD_URL=http://localhost:8000 npm start
-```
-
-### Dashboard não carrega
-
-1. Verifique se o backend está rodando
-2. Verifique se `MISAKA_API_BASE_URL` está correto
-3. Verifique o console do Electron (F12)
-
-### Notificações não funcionam
-
-1. Verifique se o desktop app tem permissão de notificação
-2. Verifique se `NOTIFICATIONS_ENABLED=true` no backend
+No arbitrary shell execution is exposed.

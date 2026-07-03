@@ -13,18 +13,41 @@ const { spawn } = require("child_process");
 const path = require("path");
 const fs = require("fs");
 const net = require("net");
+const { app } = require("electron");
+
+function getLogFile() {
+  if (process.env.MISAKA_DESKTOP_LOG_FILE)
+    return process.env.MISAKA_DESKTOP_LOG_FILE;
+  try {
+    return path.join(app.getPath("userData"), "misaka-desktop.log");
+  } catch (_) {
+    return path.join(__dirname, "..", "misaka-desktop.log");
+  }
+}
+
+function serializeLogArg(arg) {
+  if (arg instanceof Error) return arg.stack || arg.message;
+  if (typeof arg === "object") {
+    try {
+      return JSON.stringify(arg);
+    } catch (_) {
+      return String(arg);
+    }
+  }
+  return String(arg == null ? "" : arg);
+}
 
 // File-based logger — never touches stdout/stderr
 function safeLog(...args) {
   try {
-    const line = `[${new Date().toISOString()}] [INFO] [NativeVoice] ${args.map(String).join(" ")}\n`;
-    fs.appendFileSync(path.join(__dirname, "..", "..", "misaka-desktop.log"), line, "utf8");
+    const line = `[${new Date().toISOString()}] [INFO] [NativeVoice] ${args.map(serializeLogArg).join(" ")}\n`;
+    fs.appendFileSync(getLogFile(), line, "utf8");
   } catch (_) {}
 }
 function safeError(...args) {
   try {
-    const line = `[${new Date().toISOString()}] [ERROR] [NativeVoice] ${args.map(String).join(" ")}\n`;
-    fs.appendFileSync(path.join(__dirname, "..", "..", "misaka-desktop.log"), line, "utf8");
+    const line = `[${new Date().toISOString()}] [ERROR] [NativeVoice] ${args.map(serializeLogArg).join(" ")}\n`;
+    fs.appendFileSync(getLogFile(), line, "utf8");
   } catch (_) {}
 }
 
@@ -79,7 +102,10 @@ class NativeVoiceBridge {
       python: { found: false, command: "", version: "" },
       requirements: { file_exists: false, installed: false, missing: [] },
       model: { exists: false, path: DEFAULT_MODEL_PATH },
-      daemon: { running: this.process !== null, websocket: `ws://127.0.0.1:${this.daemonPort || DEFAULT_DAEMON_PORT}` },
+      daemon: {
+        running: this.process !== null,
+        websocket: `ws://127.0.0.1:${this.daemonPort || DEFAULT_DAEMON_PORT}`,
+      },
       next_step: "",
     };
 
@@ -87,14 +113,18 @@ class NativeVoiceBridge {
     try {
       const pythonCmd = process.platform === "win32" ? "python" : "python3";
       const { execSync } = require("child_process");
-      const version = execSync(`${pythonCmd} --version`, { encoding: "utf8" }).trim();
+      const version = execSync(`${pythonCmd} --version`, {
+        encoding: "utf8",
+      }).trim();
       result.python = { found: true, command: pythonCmd, version };
     } catch {
       result.python = { found: false, command: "python", version: "" };
     }
 
     // Check requirements file
-    result.requirements.file_exists = fs.existsSync(path.join(PYTHON_DIR, "requirements.txt"));
+    result.requirements.file_exists = fs.existsSync(
+      path.join(PYTHON_DIR, "requirements.txt"),
+    );
 
     // Check installed packages
     if (result.python.found) {
@@ -112,7 +142,9 @@ class NativeVoiceBridge {
     }
 
     // Check model
-    result.model.exists = fs.existsSync(DEFAULT_MODEL_PATH) && fs.readdirSync(DEFAULT_MODEL_PATH).length > 0;
+    result.model.exists =
+      fs.existsSync(DEFAULT_MODEL_PATH) &&
+      fs.readdirSync(DEFAULT_MODEL_PATH).length > 0;
 
     // Check daemon (child process or external)
     if (!result.daemon.running) {
@@ -131,9 +163,11 @@ class NativeVoiceBridge {
       const pkgs = result.requirements.missing.join(", ");
       result.next_step = `Rode: pip install -r desktop/voice/python/requirements.txt (faltando: ${pkgs})`;
     } else if (!result.model.exists) {
-      result.next_step = "Baixe um modelo Vosk pt-BR e coloque em desktop/voice/models/pt.";
+      result.next_step =
+        "Baixe um modelo Vosk pt-BR e coloque em desktop/voice/models/pt.";
     } else if (!result.daemon.running) {
-      result.next_step = "Daemon nao esta rodando. Execute: python desktop/voice/python/misaka_voice_daemon.py";
+      result.next_step =
+        "Daemon nao esta rodando. Execute: python desktop/voice/python/misaka_voice_daemon.py";
     } else {
       result.next_step = "Tudo pronto! O daemon esta rodando.";
     }
@@ -160,7 +194,13 @@ class NativeVoiceBridge {
 
   openDocs() {
     const { shell } = require("electron");
-    const docsPath = path.join(__dirname, "..", "..", "docs", "NATIVE_VOICE_DAEMON.md");
+    const docsPath = path.join(
+      __dirname,
+      "..",
+      "..",
+      "docs",
+      "NATIVE_VOICE_DAEMON.md",
+    );
     if (fs.existsSync(docsPath)) {
       shell.openPath(docsPath);
       return { success: true };
@@ -172,7 +212,11 @@ class NativeVoiceBridge {
 
   async startDaemon(modelPath, port) {
     if (this.process) {
-      return { success: true, message: "Daemon ja esta rodando.", port: this.daemonPort || DEFAULT_DAEMON_PORT };
+      return {
+        success: true,
+        message: "Daemon ja esta rodando.",
+        port: this.daemonPort || DEFAULT_DAEMON_PORT,
+      };
     }
 
     // Check if port is already in use by an external daemon
@@ -199,15 +243,21 @@ class NativeVoiceBridge {
     const pythonCmd = process.platform === "win32" ? "python" : "python3";
 
     try {
-      this.process = spawn(pythonCmd, [
-        DAEMON_SCRIPT,
-        "--model", resolvedModel,
-        "--port", String(resolvedPort),
-      ], {
-        cwd: PYTHON_DIR,
-        stdio: ["ignore", "pipe", "pipe"],
-        env: { ...process.env, PYTHONIOENCODING: "utf-8" },
-      });
+      this.process = spawn(
+        pythonCmd,
+        [
+          DAEMON_SCRIPT,
+          "--model",
+          resolvedModel,
+          "--port",
+          String(resolvedPort),
+        ],
+        {
+          cwd: PYTHON_DIR,
+          stdio: ["ignore", "pipe", "pipe"],
+          env: { ...process.env, PYTHONIOENCODING: "utf-8" },
+        },
+      );
     } catch (err) {
       const msg = `Falha ao iniciar daemon: ${err.message}`;
       this.lastError = msg;
@@ -225,13 +275,25 @@ class NativeVoiceBridge {
         try {
           const event = JSON.parse(trimmed);
           this._handleEvent(event);
-        } catch { /* ignore non-JSON */ }
+        } catch {
+          /* ignore non-JSON */
+        }
       }
     });
 
     this.process.stderr.on("data", (chunk) => {
       const text = chunk.toString("utf-8").trim();
       if (text) safeError("[Daemon] stderr:", text);
+    });
+
+    this.process.stdout.on("error", (err) => {
+      if (err && err.code === "EPIPE") return;
+      safeError("[Daemon] stdout error:", err);
+    });
+
+    this.process.stderr.on("error", (err) => {
+      if (err && err.code === "EPIPE") return;
+      safeError("[Daemon] stderr error:", err);
     });
 
     this.process.on("error", (err) => {
@@ -247,21 +309,35 @@ class NativeVoiceBridge {
         const msg = `Daemon encerrou com codigo ${code}`;
         this.state = "error";
         this.lastError = msg;
-        this._send("native-voice:error", { error: "daemon_exited", message: msg });
+        this._send("native-voice:error", {
+          error: "daemon_exited",
+          message: msg,
+        });
       }
       this.process = null;
     });
 
-    return { success: true, message: "Daemon de voz iniciado.", port: resolvedPort };
+    return {
+      success: true,
+      message: "Daemon de voz iniciado.",
+      port: resolvedPort,
+    };
   }
 
   stopDaemon() {
     this.state = "stopped";
     if (this.process) {
-      try { this.process.kill(); } catch { /* already dead */ }
+      try {
+        this.process.kill();
+      } catch {
+        /* already dead */
+      }
       this.process = null;
     }
-    this._send("native-voice:status", { state: "stopped", message: "Daemon parado." });
+    this._send("native-voice:status", {
+      state: "stopped",
+      message: "Daemon parado.",
+    });
     return { success: true };
   }
 
@@ -286,7 +362,12 @@ class NativeVoiceBridge {
   async status() {
     const childRunning = this.process !== null;
     if (childRunning) {
-      return { state: this.state, lastError: this.lastError, running: true, mode: "child" };
+      return {
+        state: this.state,
+        lastError: this.lastError,
+        running: true,
+        mode: "child",
+      };
     }
     const probe = await this._probeDaemon();
     if (probe.running) {

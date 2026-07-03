@@ -1,38 +1,45 @@
-// DOM Elements
-const chatMessages = document.getElementById("chatMessages");
-const messageInput = document.getElementById("messageInput");
-const btnSend = document.getElementById("btnSend");
-const btnClear = document.getElementById("btnClear");
-const btnVoice = document.getElementById("btnVoice");
-const btnHUD = document.getElementById("btnHUD");
-const btnSettings = document.getElementById("btnSettings");
-const btnCopyLast = document.getElementById("btnCopyLast");
-const btnSpeakLast = document.getElementById("btnSpeakLast");
-const typingIndicator = document.getElementById("typingIndicator");
-const coreVisualizer = document.getElementById("coreVisualizer");
-const voiceSelect = document.getElementById("voiceSelect");
-const voiceRateSlider = document.getElementById("voiceRate");
-const voicePitchSlider = document.getElementById("voicePitch");
-const rateValue = document.getElementById("rateValue");
-const pitchValue = document.getElementById("pitchValue");
-const voiceEnabledToggle = document.getElementById("voiceEnabledToggle");
-const autoSpeakToggle = document.getElementById("autoSpeakToggle");
-const btnTestVoice = document.getElementById("btnTestVoice");
-const btnStopVoice = document.getElementById("btnStopVoice");
-const btnWakeWord = document.getElementById("btnWakeWord");
-const settingsOverlay = document.getElementById("settingsOverlay");
-const settingsDrawer = document.getElementById("settingsDrawer");
-const btnCloseSettings = document.getElementById("btnCloseSettings");
-const toastContainer = document.getElementById("toastContainer");
-const modalOverlay = document.getElementById("modalOverlay");
-const wakeIndicator = document.getElementById("wakeIndicator");
-const wakeStatus = document.getElementById("wakeStatus");
-const wakeLastTranscript = document.getElementById("wakeLastTranscript");
-const wakeLastCommand = document.getElementById("wakeLastCommand");
-const wakeError = document.getElementById("wakeError");
-const wakeWordToggle = document.getElementById("wakeWordToggle");
+const API_BASE = window.__MISAKA_API_BASE_URL__ || MISAKA_CONFIG.API_BASE_URL;
 
-// State
+const $ = (id) => document.getElementById(id);
+
+const chatMessages = $("chatMessages");
+const messageInput = $("messageInput");
+const btnSend = $("btnSend");
+const btnClear = $("btnClear");
+const btnVoice = $("btnVoice");
+const btnHUD = $("btnHUD");
+const btnSettings = $("btnSettings");
+const btnCopyLast = $("btnCopyLast");
+const btnSpeakLast = $("btnSpeakLast");
+const typingIndicator = $("typingIndicator");
+const coreVisualizer = $("coreVisualizer");
+const voiceSelect = $("voiceSelect");
+const voiceRateSlider = $("voiceRate");
+const voicePitchSlider = $("voicePitch");
+const rateValue = $("rateValue");
+const pitchValue = $("pitchValue");
+const voiceEnabledToggle = $("voiceEnabledToggle");
+const autoSpeakToggle = $("autoSpeakToggle");
+const btnTestVoice = $("btnTestVoice");
+const btnStopVoice = $("btnStopVoice");
+const btnWakeWord = $("btnWakeWord");
+const voiceInputMode = $("voiceInputMode");
+const voiceCommandMode = $("voiceCommandMode");
+const voiceModeStatus = $("voiceModeStatus");
+const btnTestMic = $("btnTestMic");
+const btnTestTranscription = $("btnTestTranscription");
+const settingsOverlay = $("settingsOverlay");
+const settingsDrawer = $("settingsDrawer");
+const btnCloseSettings = $("btnCloseSettings");
+const toastContainer = $("toastContainer");
+const approvalModal = $("approvalModal");
+const wakeIndicator = $("wakeIndicator");
+const wakeStatus = $("wakeStatus");
+const wakeLastTranscript = $("wakeLastTranscript");
+const wakeLastCommand = $("wakeLastCommand");
+const wakeError = $("wakeError");
+const wakeWordToggle = $("wakeWordToggle");
+
 let conversationId = null;
 let lastResponse = "";
 let voiceEnabled = localStorage.getItem("misaka_voice_enabled") !== "false";
@@ -56,19 +63,9 @@ let voiceWakeController = null;
 let compactMode = localStorage.getItem("misaka_compact_mode") === "true";
 let desktopNotificationsEnabled =
   localStorage.getItem("misaka_desktop_notifications") === "true";
+const lastToastByMessage = new Map();
 
-// Toast debounce for voice errors
-let lastVoiceErrorToast = "";
-let lastVoiceErrorAt = 0;
-function showVoiceErrorOnce(message) {
-  const now = Date.now();
-  if (message === lastVoiceErrorToast && now - lastVoiceErrorAt < 5000) return;
-  lastVoiceErrorToast = message;
-  lastVoiceErrorAt = now;
-  showToast(message, "error");
-}
-
-const APP_LABELS = {
+const APP_DISPLAY_NAMES = {
   notepad: "Bloco de Notas",
   explorer: "Explorador de Arquivos",
   calculator: "Calculadora",
@@ -81,97 +78,13 @@ const APP_LABELS = {
   powershell: "PowerShell",
 };
 
-let desktopBridgeState = {
-  status: "Checking",
-  detail: "",
-  bridge: null,
-};
-
-function isSafeHttpUrl(url) {
-  if (typeof url !== "string") return false;
-  const lower = url.trim().toLowerCase();
-  if (
-    lower.startsWith("javascript:") ||
-    lower.startsWith("data:") ||
-    lower.startsWith("file:") ||
-    lower.startsWith("about:")
-  ) {
-    return false;
-  }
-  return lower.startsWith("http://") || lower.startsWith("https://");
-}
-
-async function detectDesktopBridge() {
-  const bridge = window.misakaDesktop;
-  if (!bridge || bridge.isAvailable !== true) {
-    desktopBridgeState = {
-      status: "Offline",
-      detail: "Bridge Electron nao detectado (modo navegador).",
-      bridge: null,
-    };
-    console.log("[Misaka] Desktop Bridge: Offline");
-    return desktopBridgeState;
-  }
-
-  if (
-    typeof bridge.openApp !== "function" ||
-    typeof bridge.openUrl !== "function"
-  ) {
-    desktopBridgeState = {
-      status: "Error",
-      detail: "Bridge incompleto: openApp/openUrl ausentes.",
-      bridge,
-    };
-    console.log("[Misaka] Desktop Bridge: Error (incomplete)");
-    return desktopBridgeState;
-  }
-
-  if (typeof bridge.getSystemStatus === "function") {
-    try {
-      const status = await bridge.getSystemStatus();
-      if (status && status.success === false) {
-        desktopBridgeState = {
-          status: "Error",
-          detail: status.error || "Falha ao consultar status do sistema.",
-          bridge,
-        };
-        console.log("[Misaka] Desktop Bridge: Error (system status)");
-        return desktopBridgeState;
-      }
-    } catch (error) {
-      desktopBridgeState = {
-        status: "Error",
-        detail: error.message,
-        bridge,
-      };
-      console.log("[Misaka] Desktop Bridge: Error", error.message);
-      return desktopBridgeState;
-    }
-  }
-
-  desktopBridgeState = {
-    status: "Online",
-    detail: "Bridge Electron ativo.",
-    bridge,
-  };
-  console.log("[Misaka] Desktop Bridge: Online");
-  return desktopBridgeState;
-}
-
-function updateDesktopBridgeUI() {
-  const desktopModule = document.getElementById("desktopModule");
-  if (!desktopModule) return;
-
-  const label = desktopBridgeState.status;
-  desktopModule.textContent = label;
-  desktopModule.className = `module-status ${
-    label === "Online" ? "online" : label === "Error" ? "error" : ""
-  }`;
-  desktopModule.title = desktopBridgeState.detail || label;
-}
-
-// ==================== Toast System ====================
 function showToast(message, type = "info", duration = 4000) {
+  if (!message || !toastContainer) return;
+  const key = `${type}:${message}`;
+  const lastAt = lastToastByMessage.get(key) || 0;
+  if (Date.now() - lastAt < 2500) return;
+  lastToastByMessage.set(key, Date.now());
+
   const toast = document.createElement("div");
   toast.className = `toast toast-${type}`;
   toast.textContent = message;
@@ -183,14 +96,37 @@ function showToast(message, type = "info", duration = 4000) {
   }, duration);
 }
 
-// ==================== Voice System ====================
+function setText(id, value) {
+  const element = $(id);
+  if (element) element.textContent = value;
+}
+
+function setClass(id, value) {
+  const element = $(id);
+  if (element) element.className = value;
+}
+
+function setCoreState(state) {
+  if (!coreVisualizer) return;
+  coreVisualizer.className = "core-visualizer";
+  if (state) coreVisualizer.classList.add(state);
+}
+
 function initVoiceControls() {
-  voiceRateSlider.value = voiceRate;
-  voicePitchSlider.value = voicePitch;
-  rateValue.textContent = voiceRate;
-  pitchValue.textContent = voicePitch;
-  voiceEnabledToggle.checked = voiceEnabled;
-  autoSpeakToggle.checked = autoSpeak;
+  if (voiceRateSlider) voiceRateSlider.value = voiceRate;
+  if (voicePitchSlider) voicePitchSlider.value = voicePitch;
+  if (rateValue) rateValue.textContent = voiceRate.toFixed(1);
+  if (pitchValue) pitchValue.textContent = voicePitch.toFixed(1);
+  if (voiceEnabledToggle) voiceEnabledToggle.checked = voiceEnabled;
+  if (autoSpeakToggle) autoSpeakToggle.checked = autoSpeak;
+  if (voiceInputMode) {
+    voiceInputMode.value =
+      localStorage.getItem("voice_input_mode") || "cloud_voice";
+  }
+  if (voiceCommandMode) {
+    voiceCommandMode.value =
+      localStorage.getItem("voice_command_mode") || "hybrid";
+  }
 
   if ("speechSynthesis" in window) {
     window.speechSynthesis.onvoiceschanged = populateVoiceSelect;
@@ -199,89 +135,44 @@ function initVoiceControls() {
 }
 
 function populateVoiceSelect() {
+  if (!voiceSelect || !("speechSynthesis" in window)) return;
   const voices = window.speechSynthesis.getVoices();
   voiceSelect.innerHTML = '<option value="">Default (pt-BR)</option>';
-
-  const ptBrVoices = voices.filter((v) => v.lang.includes("pt-BR"));
-  const femaleVoices = voices.filter(
-    (v) =>
-      v.name.toLowerCase().includes("female") ||
-      v.name.toLowerCase().includes("feminina") ||
-      v.name.toLowerCase().includes("helena") ||
-      v.name.toLowerCase().includes("francisca"),
-  );
-  const ptVoices = voices.filter(
-    (v) => v.lang.includes("pt") && !v.lang.includes("pt-BR"),
-  );
-
-  if (ptBrVoices.length > 0) {
-    const og = document.createElement("optgroup");
-    og.label = "Portuguese (Brazil)";
-    ptBrVoices.forEach((v) => {
-      const o = document.createElement("option");
-      o.value = v.name;
-      o.textContent = `${v.name}${v.localService ? " (local)" : ""}`;
-      if (v.name === selectedVoiceName) o.selected = true;
-      og.appendChild(o);
-    });
-    voiceSelect.appendChild(og);
-  }
-
-  if (ptVoices.length > 0) {
-    const og = document.createElement("optgroup");
-    og.label = "Portuguese";
-    ptVoices.forEach((v) => {
-      const o = document.createElement("option");
-      o.value = v.name;
-      o.textContent = `${v.name}${v.localService ? " (local)" : ""}`;
-      if (v.name === selectedVoiceName) o.selected = true;
-      og.appendChild(o);
-    });
-    voiceSelect.appendChild(og);
-  }
-
-  if (femaleVoices.length > 0 && ptBrVoices.length === 0) {
-    const og = document.createElement("optgroup");
-    og.label = "Female voices";
-    femaleVoices.forEach((v) => {
-      const o = document.createElement("option");
-      o.value = v.name;
-      o.textContent = `${v.name}${v.localService ? " (local)" : ""}`;
-      if (v.name === selectedVoiceName) o.selected = true;
-      og.appendChild(o);
-    });
-    voiceSelect.appendChild(og);
-  }
+  const ordered = [
+    ...voices.filter((voice) => voice.lang.includes("pt-BR")),
+    ...voices.filter(
+      (voice) => voice.lang.includes("pt") && !voice.lang.includes("pt-BR"),
+    ),
+    ...voices.filter((voice) => !voice.lang.includes("pt")),
+  ];
+  ordered.forEach((voice) => {
+    const option = document.createElement("option");
+    option.value = voice.name;
+    option.textContent = `${voice.name}${voice.localService ? " (local)" : ""}`;
+    option.selected = voice.name === selectedVoiceName;
+    voiceSelect.appendChild(option);
+  });
 }
 
 function getSelectedVoice() {
+  if (!("speechSynthesis" in window)) return null;
   const voices = window.speechSynthesis.getVoices();
   if (selectedVoiceName) {
-    const found = voices.find((v) => v.name === selectedVoiceName);
+    const found = voices.find((voice) => voice.name === selectedVoiceName);
     if (found) return found;
   }
-  const ptBrFemale = voices.find(
-    (v) =>
-      v.lang.includes("pt-BR") &&
-      (v.name.toLowerCase().includes("female") ||
-        v.name.toLowerCase().includes("feminina") ||
-        v.name.toLowerCase().includes("helena") ||
-        v.name.toLowerCase().includes("francisca")),
+  return (
+    voices.find((voice) => voice.lang.includes("pt-BR")) ||
+    voices.find((voice) => voice.lang.includes("pt")) ||
+    voices[0] ||
+    null
   );
-  if (ptBrFemale) return ptBrFemale;
-  const ptBr = voices.find((v) => v.lang.includes("pt-BR"));
-  if (ptBr) return ptBr;
-  const female = voices.find(
-    (v) =>
-      v.name.toLowerCase().includes("female") ||
-      v.name.toLowerCase().includes("feminina"),
-  );
-  return female || voices[0];
 }
 
 function speak(text) {
   if (!("speechSynthesis" in window)) return;
   if (!voiceEnabled && !autoSpeak) return;
+  if (!text) return;
 
   window.speechSynthesis.cancel();
   speaking = false;
@@ -290,11 +181,8 @@ function speak(text) {
   utterance.lang = "pt-BR";
   utterance.rate = voiceRate;
   utterance.pitch = voicePitch;
-
   const voice = getSelectedVoice();
-  if (voice) {
-    utterance.voice = voice;
-  }
+  if (voice) utterance.voice = voice;
 
   utterance.onstart = () => {
     speaking = true;
@@ -304,11 +192,11 @@ function speak(text) {
     speaking = false;
     setCoreState(null);
   };
-  utterance.onerror = (e) => {
+  utterance.onerror = (event) => {
     speaking = false;
     setCoreState(null);
-    if (e.error !== "canceled") {
-      console.error("Speech error:", e.error);
+    if (event.error !== "canceled") {
+      showToast(`Erro de voz: ${event.error}`, "warning");
     }
   };
 
@@ -317,131 +205,110 @@ function speak(text) {
 }
 
 function stopVoice() {
-  if ("speechSynthesis" in window) {
-    window.speechSynthesis.cancel();
-    speaking = false;
-    currentUtterance = null;
-    setCoreState(null);
-    showToast("Voz parada.", "info");
-  }
+  if (!("speechSynthesis" in window)) return;
+  window.speechSynthesis.cancel();
+  speaking = false;
+  currentUtterance = null;
+  setCoreState(null);
+  showToast("Voz parada.", "info");
 }
 
 function testVoice() {
   speak(`Olá, eu sou a Misaka.\nEsta é minha voz.`);
 }
 
-// ==================== UI Functions ====================
 function updateVoiceButton() {
+  if (!btnVoice) return;
   btnVoice.style.color = voiceEnabled
     ? "var(--color-primary)"
     : "var(--color-muted)";
 }
 
 function updateHUDButton() {
-  btnHUD.style.color = hudMode ? "var(--color-primary)" : "var(--color-muted)";
+  if (btnHUD) {
+    btnHUD.style.color = hudMode
+      ? "var(--color-primary)"
+      : "var(--color-muted)";
+  }
   document.body.classList.toggle("hud-mode", hudMode);
 }
 
 function showProviderStatus(provider, model, fallbackActive) {
-  const existing = document.querySelector(
-    ".mock-warning, .gemini-active, .gemini-fallback",
-  );
-  if (existing) existing.remove();
-
+  document
+    .querySelectorAll(".mock-warning, .gemini-active, .gemini-fallback")
+    .forEach((element) => element.remove());
   const chatSection = document.querySelector(".chat-section");
+  if (!chatSection) return;
 
+  const banner = document.createElement("div");
   if (provider === "mock") {
-    const warning = document.createElement("div");
-    warning.className = "mock-warning";
-    warning.textContent = `Misaka está em modo simulação.\nConfigure GEMINI_API_KEY para respostas inteligentes.`;
-    chatSection.prepend(warning);
+    banner.className = "mock-warning";
+    banner.textContent = `Misaka está em modo simulação.\nConfigure GEMINI_API_KEY para respostas inteligentes.`;
   } else if (provider === "gemini" && fallbackActive) {
-    const fb = document.createElement("div");
-    fb.className = "gemini-fallback";
-    fb.textContent = `Usando ${model} temporariamente (fallback ativo)`;
-    chatSection.prepend(fb);
+    banner.className = "gemini-fallback";
+    banner.textContent = `Usando ${model} temporariamente (fallback ativo)`;
   } else if (provider === "gemini") {
-    const active = document.createElement("div");
-    active.className = "gemini-active";
-    active.textContent = `Gemini Pro ativo — ${model}`;
-    chatSection.prepend(active);
+    banner.className = "gemini-active";
+    banner.textContent = `Gemini ativo - ${model}`;
+  } else {
+    return;
   }
+  chatSection.prepend(banner);
 }
 
 async function loadStatus() {
   try {
-    const response = await fetch(`${MISAKA_CONFIG.API_BASE_URL}/overview`);
+    const response = await fetch(`${API_BASE}/overview`);
     const data = await response.json();
-
     currentProvider = data.llm_provider;
     currentModel = data.llm_model;
 
-    document.getElementById("version").textContent = `v${data.version}`;
-    document.getElementById("llmProvider").textContent = data.llm_provider;
-    document.getElementById("llmModel").textContent = data.llm_model;
-    document.getElementById("providerBadge").textContent = data.llm_provider;
-    document.getElementById("memoryStatus").textContent = data.memory_enabled
-      ? "Enabled"
-      : "Disabled";
-    document.getElementById("calendarStatus").textContent =
-      data.calendar_enabled ? "Enabled" : "Disabled";
-    document.getElementById("toolsStatus").textContent = data.tools_enabled
-      ? "Enabled"
-      : "Disabled";
-    document.getElementById("notificationsStatus").textContent =
-      data.notifications_enabled ? "Enabled" : "Disabled";
-
-    const androidModule = document.getElementById("androidModule");
-    if (androidModule) {
-      androidModule.textContent = data.android_bridge_enabled
-        ? "Online"
-        : "Offline";
-      androidModule.className = `module-status ${data.android_bridge_enabled ? "online" : ""}`;
-    }
-
-    document.getElementById("memoryModule").textContent = data.memory_enabled
-      ? "Active"
-      : "Disabled";
-    document.getElementById("memoryModule").className =
-      `module-status ${data.memory_enabled ? "online" : ""}`;
-    document.getElementById("calendarModule").textContent =
-      data.calendar_enabled ? "Active" : "Disabled";
-    document.getElementById("calendarModule").className =
-      `module-status ${data.calendar_enabled ? "online" : ""}`;
-    document.getElementById("llmStatus").textContent =
-      data.llm_provider === "mock" ? "Mock" : "Active";
-
-    await detectDesktopBridge();
-    updateDesktopBridgeUI();
-
-    // Fallback status
-    const fallbackItem = document.getElementById("fallbackStatusItem");
-    if (data.llm_fallback_active) {
-      fallbackItem.style.display = "flex";
-      document.getElementById("fallbackStatus").textContent =
-        `Active (${data.llm_model})`;
-    } else {
-      fallbackItem.style.display = "none";
-    }
-
+    setText("version", `v${data.version}`);
+    setText("llmProvider", data.llm_provider);
+    setText("llmModel", data.llm_model);
+    setText("providerBadge", data.llm_provider);
+    setText("memoryStatus", data.memory_enabled ? "Enabled" : "Disabled");
+    setText("calendarStatus", data.calendar_enabled ? "Enabled" : "Disabled");
+    setText("toolsStatus", data.tools_enabled ? "Enabled" : "Disabled");
+    setText(
+      "notificationsStatus",
+      data.notifications_enabled ? "Enabled" : "Disabled",
+    );
+    setText("memoryModule", data.memory_enabled ? "Active" : "Disabled");
+    setText("calendarModule", data.calendar_enabled ? "Active" : "Disabled");
+    setText("llmStatus", data.llm_provider === "mock" ? "Mock" : "Active");
+    setText(
+      "desktopModule",
+      window.misakaDesktop?.isAvailable ? "Online" : "Web",
+    );
+    setText(
+      "androidModule",
+      data.android_bridge_enabled ? "Online" : "Offline",
+    );
+    setClass(
+      "memoryModule",
+      `module-status ${data.memory_enabled ? "online" : ""}`,
+    );
+    setClass(
+      "calendarModule",
+      `module-status ${data.calendar_enabled ? "online" : ""}`,
+    );
+    setClass(
+      "desktopModule",
+      `module-status ${window.misakaDesktop?.isAvailable ? "online" : ""}`,
+    );
     showProviderStatus(
       data.llm_provider,
       data.llm_model,
       data.llm_fallback_active,
     );
   } catch (error) {
-    console.error("Failed to load status:", error);
-  }
-}
-
-function setCoreState(state) {
-  coreVisualizer.className = "core-visualizer";
-  if (state) {
-    coreVisualizer.classList.add(state);
+    setText("statusIndicator", "Offline");
   }
 }
 
 function addMessage(text, type) {
+  if (!chatMessages) return;
   const messageDiv = document.createElement("div");
   messageDiv.className = `message ${type}`;
 
@@ -456,387 +323,344 @@ function addMessage(text, type) {
   const contentDiv = document.createElement("div");
   contentDiv.className = "message-content";
   contentDiv.textContent =
-    type === "assistant" ? cleanAssistantText(text) : text;
+    type === "assistant" ? cleanAssistantText(text) : String(text || "");
   bodyDiv.appendChild(contentDiv);
-
   messageDiv.appendChild(bodyDiv);
   chatMessages.appendChild(messageDiv);
   chatMessages.scrollTop = chatMessages.scrollHeight;
-
   lastResponse = text;
 }
 
 function cleanAssistantText(text) {
-  if (!text) return "";
-  let cleaned = text;
-  cleaned = cleaned.replace(/\*\*(.+?)\*\*/g, "$1");
-  cleaned = cleaned.replace(/\*(.+?)\*/g, "$1");
-  cleaned = cleaned.replace(/__(.+?)__/g, "$1");
-  cleaned = cleaned.replace(/_(.+?)_/g, "$1");
-  cleaned = cleaned.replace(/`(.+?)`/g, "$1");
-  cleaned = cleaned.replace(/~~(.+?)~~/g, "$1");
-  cleaned = cleaned.replace(/#{1,6}\s*/g, "");
-  cleaned = cleaned.replace(/\n{3,}/g, "\n\n");
-  cleaned = cleaned.trim();
-  return cleaned;
+  return String(text || "")
+    .replace(/\*\*(.+?)\*\*/g, "$1")
+    .replace(/\*(.+?)\*/g, "$1")
+    .replace(/__(.+?)__/g, "$1")
+    .replace(/_(.+?)_/g, "$1")
+    .replace(/`(.+?)`/g, "$1")
+    .replace(/~~(.+?)~~/g, "$1")
+    .replace(/#{1,6}\s*/g, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
-// ==================== Client Action Handler ====================
-async function handleClientAction(action) {
-  if (!action || !action.type) {
-    return { success: false, type: "", message: "", error: "Acao invalida.", action };
+function safeUrl(url) {
+  try {
+    const parsed = new URL(url);
+    if (!["http:", "https:"].includes(parsed.protocol)) return "";
+    return parsed.toString();
+  } catch (_) {
+    return "";
+  }
+}
+
+async function openUrlAction(url) {
+  const targetUrl = safeUrl(url);
+  if (!targetUrl) return { success: false, error: "URL inválida." };
+
+  if (window.misakaDesktop?.openUrl) {
+    return window.misakaDesktop.openUrl(targetUrl);
   }
 
-  const bridgeInfo = await detectDesktopBridge();
-  const bridge = bridgeInfo.bridge;
-  const appLabel = APP_LABELS[action.app] || action.app || "aplicativo";
+  try {
+    const opened = window.open(targetUrl, "_blank", "noopener,noreferrer");
+    if (opened) return { success: true, method: "window.open", url: targetUrl };
+
+    const anchor = document.createElement("a");
+    anchor.href = targetUrl;
+    anchor.target = "_blank";
+    anchor.rel = "noopener noreferrer";
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    return { success: true, method: "anchor-fallback", url: targetUrl };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+function buildSearchUrl(query, provider = "google") {
+  const encoded = encodeURIComponent(String(query || "").trim());
+  const urls = {
+    google: `https://www.google.com/search?q=${encoded}`,
+    youtube: `https://www.youtube.com/results?search_query=${encoded}`,
+    github: `https://github.com/search?q=${encoded}&type=repositories`,
+    reddit: `https://www.reddit.com/search/?q=${encoded}`,
+    modrinth: `https://modrinth.com/mods?q=${encoded}`,
+    curseforge: `https://www.curseforge.com/minecraft/search?search=${encoded}`,
+  };
+  return urls[provider] || urls.google;
+}
+
+function actionResult(action, success, message, extra = {}) {
+  return {
+    success: Boolean(success),
+    type: action?.type || "",
+    message,
+    error: extra.error || null,
+    action,
+    ...extra,
+  };
+}
+
+async function handleClientAction(action) {
+  if (!action || !action.type) {
+    return actionResult(action, true, "");
+  }
 
   if (action.type === "open_url") {
-    const url = action.url;
-    if (!isSafeHttpUrl(url)) {
-      return {
-        success: false,
-        type: "open_url",
-        message: "",
-        error: "URL invalida. Use apenas http:// ou https://.",
+    const result = await openUrlAction(action.url);
+    if (result?.success) {
+      return actionResult(
         action,
-      };
+        true,
+        "Página aberta, diz Misaka Misaka.",
+        result,
+      );
     }
-
-    if (bridge && typeof bridge.openUrl === "function") {
-      const result = await bridge.openUrl(url);
-      console.log("[Misaka] client_action open_url result:", result);
-      if (result && result.success) {
-        return {
-          success: true,
-          type: "open_url",
-          message: "Pagina aberta, diz Misaka Misaka.",
-          error: "",
-          action,
-        };
-      }
-      return {
-        success: false,
-        type: "open_url",
-        message: "",
-        error: (result && result.error) || "erro desconhecido",
-        action,
-      };
-    }
-
-    try {
-      const opened = window.open(url, "_blank", "noopener,noreferrer");
-      if (opened) {
-        return {
-          success: true,
-          type: "open_url",
-          message: "Pagina aberta, diz Misaka Misaka.",
-          error: "",
-          action,
-        };
-      }
-      return {
-        success: false,
-        type: "open_url",
-        message: "",
-        error: "popup bloqueado",
-        action,
-      };
-    } catch (error) {
-      return {
-        success: false,
-        type: "open_url",
-        message: "",
-        error: error.message,
-        action,
-      };
-    }
+    const error = result?.error || "erro desconhecido";
+    return actionResult(
+      action,
+      false,
+      `Não consegui abrir a página. Motivo: ${error}, diz Misaka Misaka.`,
+      { error },
+    );
   }
 
   if (action.type === "open_app") {
-    if (bridge && typeof bridge.openApp === "function") {
-      const result = await bridge.openApp(action.app);
-      console.log("[Misaka] client_action open_app result:", result);
-      if (result && result.success) {
-        return {
-          success: true,
-          type: "open_app",
-          message: `${appLabel} aberto no seu computador, diz Misaka Misaka.`,
-          error: "",
-          action,
-        };
-      }
-      return {
-        success: false,
-        type: "open_app",
-        message: "",
-        error: (result && result.error) || "app nao encontrado",
+    const appName = action.app || action.name || "";
+    const appLabel = APP_DISPLAY_NAMES[appName] || appName || "aplicativo";
+    if (!window.misakaDesktop?.openApp) {
+      const error = "use o app desktop da Misaka para abrir aplicativos locais";
+      return actionResult(
         action,
-      };
+        false,
+        `Não consegui abrir ${appLabel}. Motivo: ${error}, diz Misaka Misaka.`,
+        { error },
+      );
     }
-    return {
-      success: false,
-      type: "open_app",
-      message: "",
-      error: "Para abrir aplicativos locais, use o app desktop da Misaka.",
+
+    const result = await window.misakaDesktop.openApp(appName);
+    if (result?.success) {
+      return actionResult(
+        action,
+        true,
+        `${appLabel} aberto no seu computador, diz Misaka Misaka.`,
+        result,
+      );
+    }
+    const error = result?.error || "app não encontrado";
+    return actionResult(
       action,
-    };
+      false,
+      `Não consegui abrir ${appLabel}. Motivo: ${error}, diz Misaka Misaka.`,
+      { error },
+    );
   }
 
-  if (action.type === "search_web") {
-    const provider = action.provider || "google";
-    if (bridge && typeof bridge.searchWeb === "function") {
-      const result = await bridge.searchWeb(action.query, provider);
-      console.log("[Misaka] client_action search_web result:", result);
-      if (result && result.success) {
-        return {
-          success: true,
-          type: "search_web",
-          message: "Pesquisa aberta, diz Misaka Misaka.",
-          error: "",
-          action,
-        };
-      }
-      return {
-        success: false,
-        type: "search_web",
-        message: "",
-        error: (result && result.error) || "erro desconhecido",
+  if (action.type === "search_web" || action.type === "search_youtube") {
+    const provider =
+      action.type === "search_youtube"
+        ? "youtube"
+        : action.provider || "google";
+    const url = action.url || buildSearchUrl(action.query, provider);
+    const result = await openUrlAction(url);
+    if (result?.success) {
+      return actionResult(
         action,
-      };
+        true,
+        "Página aberta, diz Misaka Misaka.",
+        result,
+      );
     }
-
-    const urls = {
-      google: `https://www.google.com/search?q=${encodeURIComponent(action.query)}`,
-      youtube: `https://www.youtube.com/results?search_query=${encodeURIComponent(action.query)}`,
-      github: `https://github.com/search?q=${encodeURIComponent(action.query)}&type=repositories`,
-      reddit: `https://www.reddit.com/search/?q=${encodeURIComponent(action.query)}`,
-      modrinth: `https://modrinth.com/mods?q=${encodeURIComponent(action.query)}`,
-      curseforge: `https://www.curseforge.com/minecraft/search?search=${encodeURIComponent(action.query)}`,
-    };
-    const url = action.url || urls[provider] || urls.google;
-    if (!isSafeHttpUrl(url)) {
-      return {
-        success: false,
-        type: "search_web",
-        message: "",
-        error: "URL de pesquisa invalida.",
-        action,
-      };
-    }
-    try {
-      const opened = window.open(url, "_blank", "noopener,noreferrer");
-      if (opened) {
-        return {
-          success: true,
-          type: "search_web",
-          message: "Pesquisa aberta, diz Misaka Misaka.",
-          error: "",
-          action,
-        };
-      }
-      return {
-        success: false,
-        type: "search_web",
-        message: "",
-        error: "popup bloqueado",
-        action,
-      };
-    } catch (error) {
-      return {
-        success: false,
-        type: "search_web",
-        message: "",
-        error: error.message,
-        action,
-      };
-    }
+    const error = result?.error || "erro desconhecido";
+    return actionResult(
+      action,
+      false,
+      `Não consegui pesquisar. Motivo: ${error}, diz Misaka Misaka.`,
+      { error },
+    );
   }
 
-  if (action.type === "get_system_status") {
-    if (bridge && typeof bridge.getSystemStatus === "function") {
-      const status = await bridge.getSystemStatus();
-      return {
-        success: true,
-        type: "get_system_status",
-        message: `PC: ${status.platform} | RAM: ${Math.round(status.memory?.heapUsed / 1024 / 1024 || 0)}MB`,
-        error: "",
+  if (action.type === "show_notification") {
+    const title = action.title || "Misaka";
+    const body = action.message || action.body || "";
+    if (window.misakaDesktop?.showNotification) {
+      const result = await window.misakaDesktop.showNotification(title, body);
+      return actionResult(
         action,
-      };
+        result?.success,
+        body || "Notificação enviada.",
+        result || {},
+      );
     }
-    return {
-      success: false,
-      type: "get_system_status",
-      message: "",
-      error: "Status do PC indisponivel fora do app desktop.",
+    showToast(body || title, "info");
+    return actionResult(action, true, body || "Notificação exibida.");
+  }
+
+  if (action.type === "set_hud") {
+    hudMode = Boolean(action.enabled);
+    localStorage.setItem("misaka_hud_mode", String(hudMode));
+    updateHUDButton();
+    if (window.misakaDesktop?.setHudMode) {
+      await window.misakaDesktop.setHudMode(hudMode);
+    }
+    return actionResult(
       action,
-    };
+      true,
+      hudMode
+        ? "HUD ativado, diz Misaka Misaka."
+        : "HUD desativado, diz Misaka Misaka.",
+    );
+  }
+
+  if (action.type === "open_settings") {
+    openSettings();
+    return actionResult(
+      action,
+      true,
+      "Configurações abertas, diz Misaka Misaka.",
+    );
+  }
+
+  if (action.type === "clear_chat") {
+    clearChat();
+    return actionResult(
+      action,
+      true,
+      "Conversa reiniciada, diz Misaka Misaka.",
+    );
+  }
+
+  if (action.type === "refresh_alerts") {
+    await loadAlerts();
+    return actionResult(
+      action,
+      true,
+      "Alertas atualizados, diz Misaka Misaka.",
+    );
+  }
+
+  if (action.type === "speak") {
+    speak(action.text || action.message || "");
+    return actionResult(action, true, "");
+  }
+
+  if (
+    action.type === "get_system_status" &&
+    window.misakaDesktop?.getSystemStatus
+  ) {
+    const status = await window.misakaDesktop.getSystemStatus();
+    return actionResult(
+      action,
+      true,
+      `PC: ${status.platform} | RAM: ${Math.round(status.memory?.heapUsed / 1024 / 1024 || 0)}MB`,
+      status,
+    );
   }
 
   if (action.type === "show_toast") {
-    showToast(action.message || "Alerta do Misaka", "info");
-    return { success: true, type: "show_toast", message: "", error: "", action };
+    showToast(action.message || "Alerta da Misaka", "info");
+    return actionResult(action, true, "");
   }
 
-  return { success: false, type: action.type, message: "", error: "Acao nao suportada.", action };
+  return actionResult(action, false, "", { error: "Ação desconhecida." });
 }
 
-function formatActionResult(result) {
-  if (!result) return "";
-  if (result.success) return result.message;
-  if (result.type === "open_app") {
-    const appLabel =
-      APP_LABELS[result.action?.app] || result.action?.app || "aplicativo";
-    return `Nao consegui abrir ${appLabel}. Motivo: ${result.error}, diz Misaka Misaka.`;
+function processUiEffect(effect) {
+  if (!effect || effect === "none") return;
+  if (effect === "clear_chat") clearChat();
+  if (effect === "enable_hud") {
+    hudMode = true;
+    localStorage.setItem("misaka_hud_mode", "true");
+    updateHUDButton();
   }
-  if (result.type === "open_url") {
-    return `Nao consegui abrir a pagina. Motivo: ${result.error}, diz Misaka Misaka.`;
+  if (effect === "disable_hud") {
+    hudMode = false;
+    localStorage.setItem("misaka_hud_mode", "false");
+    updateHUDButton();
   }
-  if (result.type === "search_web") {
-    return `Nao consegui pesquisar. Motivo: ${result.error}, diz Misaka Misaka.`;
+  if (effect === "enable_voice") {
+    voiceEnabled = true;
+    localStorage.setItem("misaka_voice_enabled", "true");
+    if (voiceEnabledToggle) voiceEnabledToggle.checked = true;
+    updateVoiceButton();
   }
-  if (result.error) {
-    return `Nao consegui executar a acao. Motivo: ${result.error}, diz Misaka Misaka.`;
+  if (effect === "disable_voice") {
+    voiceEnabled = false;
+    localStorage.setItem("misaka_voice_enabled", "false");
+    if (voiceEnabledToggle) voiceEnabledToggle.checked = false;
+    updateVoiceButton();
   }
-  return result.message || "";
+  if (effect === "refresh_alerts") loadAlerts();
+  if (effect === "refresh_status") loadStatus();
+  if (effect === "open_settings") openSettings();
 }
-// ==================== Chat Functions ====================
+
 async function sendMessage(messageOverride = null, options = {}) {
-  const fromVoice = options.source === "voice";
-  const silentUserMessage = options.silentUserMessage === true;
-  const skipInputClear = options.skipInputClear === true;
+  const source = options.source || "text";
+  const fromVoice = ["voice", "native_voice", "cloud_voice"].includes(source);
   const message =
     typeof messageOverride === "string"
       ? messageOverride.trim()
-      : messageInput.value.trim();
-  if (!message) return { success: false, error: "empty_message" };
+      : messageInput?.value.trim() || "";
+  if (!message) return null;
 
-  if (!silentUserMessage) {
-    addMessage(message, "user");
-  }
-  if (!fromVoice && !skipInputClear) {
+  if (!options.silentUserMessage) addMessage(message, "user");
+  if (!options.skipInputClear && !fromVoice && messageInput) {
     messageInput.value = "";
     messageInput.style.height = "auto";
   }
-  messageInput.style.height = "auto";
 
   setCoreState("thinking");
-  typingIndicator.classList.add("active");
-  btnSend.disabled = true;
-
-  let actionOutcome = { success: true };
+  typingIndicator?.classList.add("active");
+  if (btnSend) btnSend.disabled = true;
 
   try {
-    const response = await fetch(`${MISAKA_CONFIG.API_BASE_URL}/chat`, {
+    const response = await fetch(`${API_BASE}/chat`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        message: message,
+        message,
         conversation_id: conversationId,
+        metadata: { source },
       }),
     });
 
     const data = await response.json();
     conversationId = data.conversation_id;
+    processUiEffect(data.metadata?.ui_effect);
 
-    const clientAction = data.metadata && data.metadata.client_action;
-    const assistantResponse = data.response;
-
+    let assistantResponse = data.response || "";
+    const clientAction = data.metadata?.client_action;
     if (clientAction) {
-      console.log("[Misaka] client_action received:", clientAction);
+      const result = await handleClientAction(clientAction);
+      assistantResponse = result.message || assistantResponse;
+    }
+
+    if (assistantResponse) {
+      addMessage(assistantResponse, "assistant");
+      if (voiceEnabled && (autoSpeak || fromVoice)) speak(assistantResponse);
     }
 
     setCoreState("speaking");
-    if (assistantResponse) {
-      addMessage(assistantResponse, "assistant");
-    }
-
-    // Show command-specific UI effects
-    if (data.metadata && data.metadata.ui_effect) {
-      const effect = data.metadata.ui_effect;
-      if (effect === "clear_chat") {
-        setTimeout(clearChat, 500);
-      }
-      if (effect === "enable_hud") {
-        hudMode = true;
-        localStorage.setItem("misaka_hud_mode", "true");
-        updateHUDButton();
-      }
-      if (effect === "disable_hud") {
-        hudMode = false;
-        localStorage.setItem("misaka_hud_mode", "false");
-        updateHUDButton();
-      }
-      if (effect === "enable_voice") {
-        voiceEnabled = true;
-        localStorage.setItem("misaka_voice_enabled", "true");
-        voiceEnabledToggle.checked = true;
-        updateVoiceButton();
-      }
-      if (effect === "disable_voice") {
-        voiceEnabled = false;
-        localStorage.setItem("misaka_voice_enabled", "false");
-        voiceEnabledToggle.checked = false;
-        updateVoiceButton();
-      }
-      if (effect === "refresh_alerts") {
-        loadAlerts();
-      }
-      if (effect === "refresh_status") {
-        loadStatus();
-      }
-      if (effect === "open_settings") {
-        openSettings();
-      }
-    }
-
-    let actionResult = null;
-    if (clientAction) {
-      try {
-        actionResult = await handleClientAction(clientAction);
-        actionOutcome = actionResult;
-      } catch (actionError) {
-        actionResult = {
-          success: false,
-          type: clientAction.type,
-          message: "",
-          error: actionError.message,
-          action: clientAction,
-        };
-        actionOutcome = actionResult;
-      }
-      const actionMessage = formatActionResult(actionResult);
-      if (actionMessage) {
-        addMessage(actionMessage, "assistant");
-      }
-    }
-
-    const speakText =
-      (actionResult && (actionResult.message || formatActionResult(actionResult))) ||
-      assistantResponse;
-    if (voiceEnabled && speakText && (autoSpeak || fromVoice)) {
-      speak(speakText);
-    }
-
-    setTimeout(() => setCoreState(null), 3000);
-    return {
-      success: actionOutcome.success !== false,
-      response: assistantResponse,
-      action: actionOutcome,
-      metadata: data.metadata || {},
-    };
+    setTimeout(() => setCoreState(null), 1200);
+    return data;
   } catch (error) {
-    addMessage("Erro ao conectar com o servidor.", "system");
+    const messageText = `Erro ao conectar com o servidor: ${error.message}`;
+    addMessage(messageText, "system");
+    showToast(messageText, "error");
     setCoreState(null);
     return { success: false, error: error.message };
   } finally {
-    typingIndicator.classList.remove("active");
-    btnSend.disabled = false;
-    messageInput.focus();
+    typingIndicator?.classList.remove("active");
+    if (btnSend) btnSend.disabled = false;
+    messageInput?.focus();
   }
 }
 
 function clearChat() {
+  if (!chatMessages) return;
   chatMessages.innerHTML = "";
   conversationId = null;
   addMessage(`Conversa reiniciada.\nComo posso ajudar?`, "system");
@@ -844,187 +668,138 @@ function clearChat() {
 
 function copyToClipboard(text) {
   navigator.clipboard
-    .writeText(text)
-    .then(() => {
-      showToast("Copiado!", "success");
-    })
-    .catch(() => {
-      showToast("Erro ao copiar.", "error");
-    });
+    ?.writeText(text)
+    .then(() => showToast("Copiado!", "success"))
+    .catch(() => showToast("Erro ao copiar.", "error"));
 }
 
-// ==================== Alert Functions ====================
 async function loadAlerts() {
+  const alertsContainer = $("alertsContainer");
+  const alertsCount = $("alertsCount");
+  if (!alertsContainer) return;
   try {
-    const response = await fetch(`${MISAKA_CONFIG.API_BASE_URL}/notifications/alerts`);
+    const response = await fetch(`${API_BASE}/notifications/alerts`);
     const data = await response.json();
-
-    const alertsContainer = document.getElementById("alertsContainer");
-    const alertsCount = document.getElementById("alertsCount");
-    if (!alertsContainer) return;
-
+    const alerts = Array.isArray(data.alerts) ? data.alerts : [];
+    alertsCount && (alertsCount.textContent = String(alerts.length));
     alertsContainer.textContent = "";
 
-    if (data.alerts && data.alerts.length > 0) {
-      alertsCount.textContent = data.alerts.length;
-
-      let filtered = data.alerts;
-      if (currentAlertFilter !== "all") {
-        if (currentAlertFilter === "pending") {
-          filtered = data.alerts.filter((a) => a.status === "pending");
-        } else {
-          filtered = data.alerts.filter(
-            (a) => a.priority === currentAlertFilter,
+    const filtered =
+      currentAlertFilter === "all"
+        ? alerts
+        : alerts.filter(
+            (alert) =>
+              alert.status === currentAlertFilter ||
+              alert.priority === currentAlertFilter,
           );
-        }
-      }
 
-      filtered.slice(0, 10).forEach((alert) => {
-        const alertDiv = document.createElement("div");
-        alertDiv.className = `alert-item alert-${alert.priority}`;
-
-        const titleSpan = document.createElement("span");
-        titleSpan.className = "alert-title";
-        titleSpan.textContent = alert.title;
-        alertDiv.appendChild(titleSpan);
-
-        const messageSpan = document.createElement("span");
-        messageSpan.className = "alert-message";
-        messageSpan.textContent = alert.message;
-        alertDiv.appendChild(messageSpan);
-
-        if (alert.status === "pending") {
-          const ackBtn = document.createElement("button");
-          ackBtn.className = "btn-alert-ack";
-          ackBtn.textContent = "✓";
-          ackBtn.title = "Mark as seen";
-          ackBtn.onclick = async (e) => {
-            e.stopPropagation();
-            try {
-              await fetch(`${MISAKA_CONFIG.API_BASE_URL}/notifications/alerts/${alert.id}/ack`, {
-                method: "POST",
-              });
-              loadAlerts();
-              showToast("Alerta marcado como visto.", "success");
-            } catch (err) {
-              showToast("Erro ao marcar alerta.", "error");
-            }
-          };
-          alertDiv.appendChild(ackBtn);
-        }
-
-        alertsContainer.appendChild(alertDiv);
-
-        if (!pendingAlertIds.includes(alert.id)) {
-          pendingAlertIds.push(alert.id);
-          if (
-            desktopNotificationsEnabled &&
-            Notification.permission === "granted"
-          ) {
-            new Notification(alert.title, { body: alert.message });
-          }
-        }
-      });
-
-      localStorage.setItem(
-        "misaka_pending_alerts",
-        JSON.stringify(pendingAlertIds),
-      );
-    } else {
-      alertsCount.textContent = "0";
+    if (filtered.length === 0) {
       const emptyDiv = document.createElement("div");
       emptyDiv.className = "alert-empty";
       emptyDiv.textContent = "No alerts";
       alertsContainer.appendChild(emptyDiv);
+      return;
     }
+
+    filtered.slice(0, 10).forEach((alert) => {
+      const alertDiv = document.createElement("div");
+      alertDiv.className = `alert-item alert-${alert.priority}`;
+      const titleSpan = document.createElement("span");
+      titleSpan.className = "alert-title";
+      titleSpan.textContent = alert.title;
+      const messageSpan = document.createElement("span");
+      messageSpan.className = "alert-message";
+      messageSpan.textContent = alert.message;
+      alertDiv.appendChild(titleSpan);
+      alertDiv.appendChild(messageSpan);
+      alertsContainer.appendChild(alertDiv);
+
+      if (!pendingAlertIds.includes(alert.id)) {
+        pendingAlertIds.push(alert.id);
+        if (
+          desktopNotificationsEnabled &&
+          Notification.permission === "granted"
+        ) {
+          new Notification(alert.title, { body: alert.message });
+        }
+      }
+    });
+    localStorage.setItem(
+      "misaka_pending_alerts",
+      JSON.stringify(pendingAlertIds),
+    );
   } catch (error) {
-    console.error("Failed to load alerts:", error);
+    alertsContainer.textContent = "";
+    const emptyDiv = document.createElement("div");
+    emptyDiv.className = "alert-empty";
+    emptyDiv.textContent = "Backend offline";
+    alertsContainer.appendChild(emptyDiv);
   }
 }
 
 async function ackAllAlerts() {
   try {
-    const response = await fetch(`${MISAKA_CONFIG.API_BASE_URL}/notifications/alerts/ack-all`, {
+    const response = await fetch(`${API_BASE}/notifications/alerts/ack-all`, {
       method: "POST",
     });
     const data = await response.json();
     showToast(data.message || "Alertas marcados como vistos.", "success");
-    loadAlerts();
-  } catch (error) {
+    await loadAlerts();
+  } catch (_) {
     showToast("Erro ao limpar alertas.", "error");
   }
 }
 
-// ==================== Settings ====================
 function openSettings() {
-  settingsOverlay.classList.add("active");
-  settingsDrawer.classList.add("active");
+  settingsOverlay?.classList.add("active");
+  settingsDrawer?.classList.add("active");
   loadSettingsInfo();
 }
 
 function closeSettings() {
-  settingsOverlay.classList.remove("active");
-  settingsDrawer.classList.remove("active");
+  settingsOverlay?.classList.remove("active");
+  settingsDrawer?.classList.remove("active");
 }
 
 async function loadSettingsInfo() {
   try {
-    const response = await fetch(`${MISAKA_CONFIG.API_BASE_URL}/llm/status`);
+    const response = await fetch(`${API_BASE}/llm/status`);
     const data = await response.json();
-    const info = document.getElementById("settingsLLMInfo");
-    info.innerHTML = `
-            <div class="settings-info-row"><span>Provider:</span><span>${data.provider}</span></div>
-            <div class="settings-info-row"><span>Active model:</span><span>${data.active_model || "-"}</span></div>
-            <div class="settings-info-row"><span>Primary:</span><span>${data.primary_model || "-"}</span></div>
-            <div class="settings-info-row"><span>Fallback:</span><span>${data.fallback_model || "-"}</span></div>
-            <div class="settings-info-row"><span>Configured:</span><span>${data.gemini_configured ? "Yes" : "No"}</span></div>
-            ${data.last_error_type ? `<div class="settings-info-row warning"><span>Last error:</span><span>${data.last_error_type}</span></div>` : ""}
-        `;
-  } catch (e) {
-    document.getElementById("settingsLLMInfo").textContent = "Failed to load";
+    setText("settingsLlmStatus", data.provider || "-");
+    setText("settingsVersion", currentModel || "-");
+  } catch (_) {
+    setText("settingsLlmStatus", "Offline");
   }
-
-  // Desktop info
-  const desktopInfo = document.getElementById("settingsDesktopInfo");
-  if (window.misakaDesktop && window.misakaDesktop.isAvailable) {
-    desktopInfo.innerHTML =
-      '<span class="online">Desktop bridge available</span>';
-  } else {
-    desktopInfo.innerHTML = "<span>Web mode (no desktop bridge)</span>";
-  }
-
-  // Android info
+  setText(
+    "settingsDesktopBridge",
+    window.misakaDesktop?.isAvailable ? "Online" : "Web mode",
+  );
   try {
-    const response = await fetch(`${MISAKA_CONFIG.API_BASE_URL}/android/status`);
+    const response = await fetch(`${API_BASE}/android/status`);
     const data = await response.json();
-    const androidInfo = document.getElementById("settingsAndroidInfo");
-    if (data.enabled) {
-      androidInfo.innerHTML = `
-                <span class="${data.connected ? "online" : ""}">${data.connected ? "Connected" : "Disconnected"}</span>
-                <span>${data.pending_actions} pending actions</span>
-            `;
-    } else {
-      androidInfo.innerHTML = "<span>Not configured</span>";
-    }
-  } catch (e) {
-    document.getElementById("settingsAndroidInfo").textContent =
-      "Failed to load";
+    setText(
+      "settingsAndroidBridge",
+      data.connected ? "Connected" : "Disconnected",
+    );
+  } catch (_) {
+    setText("settingsAndroidBridge", "-");
   }
 }
 
-// ==================== Wake Word ====================
-function initVoiceWakeController() {
-  console.log("[Misaka Wake] initVoiceWakeController()");
-
-  if (typeof VoiceWakeController === "undefined") {
-    console.error("[Misaka Wake] VoiceWakeController not loaded from voiceWake.js");
+async function initVoiceWake() {
+  if (!window.VoiceWakeController) {
+    updateWakeUI("unavailable", "Controlador de voz não carregado.");
     return;
   }
 
   voiceWakeController = new VoiceWakeController({
+    apiBase: API_BASE,
     elements: {
       button: btnWakeWord,
       toggle: wakeWordToggle,
+      mode: voiceInputMode,
+      commandMode: voiceCommandMode,
+      modeLabel: voiceModeStatus,
       status: wakeStatus,
       lastTranscript: wakeLastTranscript,
       lastCommand: wakeLastCommand,
@@ -1032,360 +807,273 @@ function initVoiceWakeController() {
       indicator: wakeIndicator,
     },
     callbacks: {
-      sendVoiceCommand: (command) => sendMessage(command, { source: "voice" }),
-      onStateChange: (state, label) => {
-        console.log("[Misaka Wake] state:", state, label);
-        const active = [
-          "listening_for_wake",
-          "wake_detected",
-          "listening_for_command",
-          "processing",
-          "speaking",
-        ].includes(state);
-        btnWakeWord.style.opacity = state === "unavailable" ? "0.5" : "1";
-        btnWakeWord.style.color = active
-          ? "var(--color-primary)"
-          : "var(--color-muted)";
-        // Always sync button text with actual enabled state
-        if (voiceWakeController) {
-          btnWakeWord.textContent = voiceWakeController.enabled
-            ? "Desativar escuta"
-            : "Ativar escuta Misaka";
-        }
-        if (
-          state === "error" ||
-          state === "permission_needed" ||
-          state === "unavailable"
-        ) {
-          showToast(label, "warning");
-        }
+      onCommand: sendVoiceCommand,
+      onStateChange: updateWakeUI,
+      onTranscript: updateWakeTranscript,
+      onError: (_error, message) => {
+        if (message) showToast(message, "warning");
       },
+      onWakeDetected: () => showToast("Misaka detectada.", "info", 1600),
     },
   });
 
-  const initResult = voiceWakeController.init();
-  console.log("[Misaka Wake] init result:", initResult, "mode:", voiceWakeController.voiceMode);
+  const result = await voiceWakeController.init();
+  if (!result.success && result.error) showToast(result.error, "warning");
 
-  // Apply saved voice command mode
-  const savedCmdMode = localStorage.getItem("voice_command_mode") || "hybrid";
-  voiceWakeController.setVoiceCommandMode(savedCmdMode);
-
-  if (window.misakaDesktop && window.misakaDesktop.onWakeWordSetEnabled) {
-    window.misakaDesktop.onWakeWordSetEnabled(async (enabled) => {
-      console.log("[Misaka Wake] onWakeWordSetEnabled:", enabled);
-      try {
-        const started = await voiceWakeController.setEnabled(Boolean(enabled));
-        if (enabled && !started) {
-          showToast("Nao consegui ativar a escuta Misaka.", "warning");
-        }
-      } catch (err) {
-        console.error("[Misaka Wake] setEnabled failed:", err);
-        showToast(`Erro ao ativar escuta: ${err.message}`, "error");
-      }
-    });
-  }
-
-  if (window.misakaDesktop && window.misakaDesktop.onNativeVoiceCommand) {
-    window.misakaDesktop.onNativeVoiceCommand((data) => {
-      const command = data && data.command;
-      if (command) {
-        console.log("[Misaka] native voice command:", command);
-        sendMessage(command, { source: "voice" });
-      }
+  if (window.misakaDesktop?.onWakeWordSetEnabled) {
+    window.misakaDesktop.onWakeWordSetEnabled((enabled) => {
+      setWakeWordEnabled(Boolean(enabled));
     });
   }
 }
-// ==================== Confirmation Modal ====================
-function showConfirmation(title, message, payload) {
-  modalOverlay.style.display = "flex";
-  document.getElementById("modalTitle").textContent = title;
-  document.getElementById("modalMessage").textContent = message;
-  pendingConfirmation = payload;
+
+function updateWakeUI(state, label) {
+  const active = [
+    "requesting_microphone",
+    "microphone_ready",
+    "recording",
+    "transcribing",
+    "processing_command",
+    "listening",
+    "listening_for_wake",
+    "wake_detected",
+    "listening_for_command",
+  ].includes(state);
+  if (btnWakeWord) {
+    btnWakeWord.style.opacity = state === "unavailable" ? "0.6" : "1";
+    btnWakeWord.style.color = active
+      ? "var(--color-primary)"
+      : "var(--color-muted)";
+  }
+  if (wakeStatus && label) wakeStatus.textContent = label;
 }
 
-function hideConfirmation() {
-  modalOverlay.style.display = "none";
-  pendingConfirmation = null;
-}
-
-// ==================== Event Listeners ====================
-messageInput.addEventListener("keydown", (e) => {
-  if (e.key === "Enter" && !e.shiftKey) {
-    e.preventDefault();
-    sendMessage();
-  }
-});
-
-messageInput.addEventListener("input", () => {
-  messageInput.style.height = "auto";
-  messageInput.style.height = Math.min(messageInput.scrollHeight, 120) + "px";
-});
-
-btnSend.addEventListener("click", sendMessage);
-btnClear.addEventListener("click", clearChat);
-
-btnVoice.addEventListener("click", () => {
-  voiceEnabled = !voiceEnabled;
-  localStorage.setItem("misaka_voice_enabled", voiceEnabled);
-  voiceEnabledToggle.checked = voiceEnabled;
-  updateVoiceButton();
-  showToast(voiceEnabled ? "Voz ativada." : "Voz desativada.", "info");
-});
-
-btnHUD.addEventListener("click", () => {
-  hudMode = !hudMode;
-  localStorage.setItem("misaka_hud_mode", hudMode);
-  updateHUDButton();
-  showToast(hudMode ? "HUD ativado." : "HUD desativado.", "info");
-});
-
-btnCopyLast.addEventListener("click", () => {
-  if (lastResponse) copyToClipboard(lastResponse);
-});
-
-btnSpeakLast.addEventListener("click", () => {
-  if (lastResponse) speak(lastResponse);
-});
-
-btnTestVoice.addEventListener("click", testVoice);
-btnStopVoice.addEventListener("click", stopVoice);
-
-// Voice Control Listeners
-voiceSelect.addEventListener("change", (e) => {
-  selectedVoiceName = e.target.value;
-  localStorage.setItem("misaka_voice_name", selectedVoiceName);
-});
-
-voiceRateSlider.addEventListener("input", (e) => {
-  voiceRate = parseFloat(e.target.value);
-  rateValue.textContent = voiceRate.toFixed(1);
-  localStorage.setItem("misaka_voice_rate", voiceRate);
-});
-
-voicePitchSlider.addEventListener("input", (e) => {
-  voicePitch = parseFloat(e.target.value);
-  pitchValue.textContent = voicePitch.toFixed(1);
-  localStorage.setItem("misaka_voice_pitch", voicePitch);
-});
-
-voiceEnabledToggle.addEventListener("change", (e) => {
-  voiceEnabled = e.target.checked;
-  localStorage.setItem("misaka_voice_enabled", voiceEnabled);
-  updateVoiceButton();
-});
-
-autoSpeakToggle.addEventListener("change", (e) => {
-  autoSpeak = e.target.checked;
-  localStorage.setItem("misaka_auto_speak", autoSpeak);
-});
-
-// Settings listeners
-btnSettings.addEventListener("click", openSettings);
-btnCloseSettings.addEventListener("click", closeSettings);
-settingsOverlay.addEventListener("click", closeSettings);
-
-document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape") {
-    closeSettings();
-    hideConfirmation();
-  }
-});
-
-// Alert filters
-document.querySelectorAll(".filter-btn").forEach((btn) => {
-  btn.addEventListener("click", () => {
-    document
-      .querySelectorAll(".filter-btn")
-      .forEach((b) => b.classList.remove("active"));
-    btn.classList.add("active");
-    currentAlertFilter = btn.dataset.filter;
-    loadAlerts();
-  });
-});
-
-document.getElementById("btnAckAll").addEventListener("click", ackAllAlerts);
-document
-  .getElementById("btnRefreshAlerts")
-  .addEventListener("click", loadAlerts);
-
-// Wake UI helpers
-function updateWakeUI(state, message) {
-  const statusEl = document.getElementById("wakeStatus");
-  const errorEl = document.getElementById("wakeError");
-  if (statusEl) {
-    statusEl.textContent = message || `Wake: ${state}`;
-    statusEl.dataset.state = state;
-  }
-  if (errorEl) {
-    errorEl.textContent = (state === "error" || state === "unavailable") ? (message || "") : "";
+function updateWakeTranscript(text) {
+  if (wakeLastTranscript) {
+    wakeLastTranscript.textContent = text
+      ? `Último ouvido: ${text}`
+      : "Último ouvido: -";
   }
 }
 
-function updateWakeButton(enabled) {
-  if (!btnWakeWord) return;
-  btnWakeWord.textContent = enabled ? "Desativar escuta" : "Ativar escuta Misaka";
-  btnWakeWord.dataset.enabled = String(enabled);
+function updateWakeCommand(command) {
+  if (wakeLastCommand) {
+    wakeLastCommand.textContent = command
+      ? `Comando: ${command}`
+      : "Comando: -";
+  }
 }
 
-// Wake word
-btnWakeWord.addEventListener("click", async () => {
-  console.log("[Misaka Wake] button clicked");
+function sendVoiceCommand(command) {
+  updateWakeCommand(command);
+  return sendMessage(command, { source: "cloud_voice" });
+}
 
-  if (!voiceWakeController) {
-    console.log("[Misaka Wake] controller null, attempting init...");
-    initVoiceWakeController();
-  }
-
-  if (!voiceWakeController) {
-    console.error("[Misaka Wake] voiceWakeController still null after init attempt");
-    showVoiceErrorOnce("Voice Wake nao disponivel. Verifique se voiceWake.js carregou.");
-    return;
-  }
-
-  const enabling = !voiceWakeController.enabled;
-
-  // If disabling, just stop
-  if (!enabling) {
-    await voiceWakeController.setEnabled(false);
+async function setWakeWordEnabled(enabled) {
+  if (!voiceWakeController)
+    return { success: false, error: "Voz não inicializada." };
+  const result = await voiceWakeController.setEnabled(Boolean(enabled));
+  if (enabled && !result.success) {
+    if (wakeWordToggle) wakeWordToggle.checked = false;
+    showToast(result.error || "Não consegui ativar a escuta.", "warning");
+  } else if (enabled) {
+    showToast(`Escuta ativada.\nModo principal: Cloud Voice.`, "info");
+  } else {
     showToast("Escuta desativada.", "info");
-    return;
   }
-
-  // Enabling: show checking state first, then result
-  updateWakeUI("checking", "Verificando modo de escuta...");
-
-  try {
-    const result = await voiceWakeController.setEnabled(true);
-    console.log("[Misaka Wake] setEnabled result:", result);
-
-    if (result && result.success) {
-      updateWakeButton(true);
-      updateWakeUI("listening_for_wake", result.message || "Escuta ativa.");
-      showToast(`Escuta ativada usando ${result.mode}.`, "success");
-    } else {
-      updateWakeButton(false);
-      const errorMsg = result?.error || voiceWakeController.lastError || "Nao foi possivel ativar a escuta.";
-      updateWakeUI("error", errorMsg);
-      showVoiceErrorOnce(errorMsg);
-    }
-  } catch (err) {
-    console.error("[Misaka Wake] toggle failed:", err);
-    updateWakeButton(false);
-    updateWakeUI("error", err.message || "Erro ao ativar escuta.");
-    showVoiceErrorOnce(`Erro ao ativar escuta: ${err.message}`);
-  }
-});
-
-// Voice command mode selector
-const voiceCommandModeSelect = document.getElementById("voiceCommandMode");
-if (voiceCommandModeSelect) {
-  const savedMode = localStorage.getItem("voice_command_mode") || "hybrid";
-  voiceCommandModeSelect.value = savedMode;
-  voiceCommandModeSelect.addEventListener("change", (e) => {
-    const mode = e.target.value;
-    localStorage.setItem("voice_command_mode", mode);
-    if (voiceWakeController) {
-      voiceWakeController.setVoiceCommandMode(mode);
-    }
-    const labels = {
-      hybrid: "Hibrido",
-      wake_word: 'Apenas "Misaka"',
-      direct_command: "Comandos diretos",
-    };
-    showToast(`Modo de escuta alterado para ${labels[mode] || mode}.`, "info");
-  });
+  return result;
 }
 
-// Settings toggles
-document.getElementById("speakSuffixToggle").addEventListener("change", (e) => {
-  localStorage.setItem("misaka_speak_suffix", e.target.checked);
-});
+function toggleWakeWord() {
+  if (!voiceWakeController) return;
+  setWakeWordEnabled(!voiceWakeController.enabled);
+}
 
-document
-  .getElementById("desktopNotificationsToggle")
-  .addEventListener("change", (e) => {
-    desktopNotificationsEnabled = e.target.checked;
+async function testMicrophone() {
+  if (!voiceWakeController) return;
+  const result = await voiceWakeController.requestMicrophone();
+  if (result.success) {
+    voiceWakeController.stopMediaStream();
+    showToast("Microfone permitido.", "success");
+  } else {
+    showToast(result.error, "warning");
+  }
+}
+
+async function testTranscription() {
+  if (!voiceWakeController) return;
+  const result = await voiceWakeController.fetchVoiceStatus();
+  if (!result.success) {
+    showToast(result.error, "warning");
+    return;
+  }
+  if (!result.data.ready) {
+    showToast(
+      result.data.last_error ||
+        "Transcrição de voz não configurada no backend.",
+      "warning",
+    );
+    return;
+  }
+  showToast(`Cloud Voice pronto (${result.data.provider}).`, "success");
+}
+
+function bindEvents() {
+  messageInput?.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      sendMessage();
+    }
+  });
+  messageInput?.addEventListener("input", () => {
+    messageInput.style.height = "auto";
+    messageInput.style.height = `${Math.min(messageInput.scrollHeight, 120)}px`;
+  });
+  btnSend?.addEventListener("click", () => sendMessage());
+  btnClear?.addEventListener("click", clearChat);
+  btnVoice?.addEventListener("click", () => {
+    voiceEnabled = !voiceEnabled;
+    localStorage.setItem("misaka_voice_enabled", String(voiceEnabled));
+    if (voiceEnabledToggle) voiceEnabledToggle.checked = voiceEnabled;
+    updateVoiceButton();
+    showToast(voiceEnabled ? "Voz ativada." : "Voz desativada.", "info");
+  });
+  btnHUD?.addEventListener("click", async () => {
+    hudMode = !hudMode;
+    localStorage.setItem("misaka_hud_mode", String(hudMode));
+    updateHUDButton();
+    if (window.misakaDesktop?.setHudMode) {
+      await window.misakaDesktop.setHudMode(hudMode);
+    }
+    showToast(hudMode ? "HUD ativado." : "HUD desativado.", "info");
+  });
+  btnCopyLast?.addEventListener("click", () => {
+    if (lastResponse) copyToClipboard(lastResponse);
+  });
+  btnSpeakLast?.addEventListener("click", () => {
+    if (lastResponse) speak(lastResponse);
+  });
+  btnTestVoice?.addEventListener("click", testVoice);
+  btnStopVoice?.addEventListener("click", stopVoice);
+  btnWakeWord?.addEventListener("click", toggleWakeWord);
+  btnTestMic?.addEventListener("click", testMicrophone);
+  btnTestTranscription?.addEventListener("click", testTranscription);
+
+  voiceSelect?.addEventListener("change", (event) => {
+    selectedVoiceName = event.target.value;
+    localStorage.setItem("misaka_voice_name", selectedVoiceName);
+  });
+  voiceRateSlider?.addEventListener("input", (event) => {
+    voiceRate = parseFloat(event.target.value);
+    if (rateValue) rateValue.textContent = voiceRate.toFixed(1);
+    localStorage.setItem("misaka_voice_rate", String(voiceRate));
+  });
+  voicePitchSlider?.addEventListener("input", (event) => {
+    voicePitch = parseFloat(event.target.value);
+    if (pitchValue) pitchValue.textContent = voicePitch.toFixed(1);
+    localStorage.setItem("misaka_voice_pitch", String(voicePitch));
+  });
+  voiceEnabledToggle?.addEventListener("change", (event) => {
+    voiceEnabled = event.target.checked;
+    localStorage.setItem("misaka_voice_enabled", String(voiceEnabled));
+    updateVoiceButton();
+  });
+  autoSpeakToggle?.addEventListener("change", (event) => {
+    autoSpeak = event.target.checked;
+    localStorage.setItem("misaka_auto_speak", String(autoSpeak));
+  });
+  voiceInputMode?.addEventListener("change", (event) => {
+    voiceWakeController?.setMode(event.target.value);
+  });
+  voiceCommandMode?.addEventListener("change", (event) => {
+    voiceWakeController?.setCommandMode(event.target.value);
+  });
+  wakeWordToggle?.addEventListener("change", (event) => {
+    setWakeWordEnabled(event.target.checked);
+  });
+
+  btnSettings?.addEventListener("click", openSettings);
+  btnCloseSettings?.addEventListener("click", closeSettings);
+  settingsOverlay?.addEventListener("click", closeSettings);
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") closeSettings();
+  });
+
+  document.querySelectorAll(".filter-btn").forEach((button) => {
+    button.addEventListener("click", () => {
+      document
+        .querySelectorAll(".filter-btn")
+        .forEach((item) => item.classList.remove("active"));
+      button.classList.add("active");
+      currentAlertFilter = button.dataset.filter;
+      loadAlerts();
+    });
+  });
+
+  $("btnAckAll")?.addEventListener("click", ackAllAlerts);
+  $("btnRefreshAlerts")?.addEventListener("click", loadAlerts);
+  $("settingsVoiceEnabled")?.addEventListener("change", (event) => {
+    voiceEnabled = event.target.checked;
+    localStorage.setItem("misaka_voice_enabled", String(voiceEnabled));
+    if (voiceEnabledToggle) voiceEnabledToggle.checked = voiceEnabled;
+    updateVoiceButton();
+  });
+  $("settingsAutoSpeak")?.addEventListener("change", (event) => {
+    autoSpeak = event.target.checked;
+    localStorage.setItem("misaka_auto_speak", String(autoSpeak));
+    if (autoSpeakToggle) autoSpeakToggle.checked = autoSpeak;
+  });
+  $("settingsHudMode")?.addEventListener("change", (event) => {
+    hudMode = event.target.checked;
+    localStorage.setItem("misaka_hud_mode", String(hudMode));
+    updateHUDButton();
+  });
+  $("settingsCompactMode")?.addEventListener("change", (event) => {
+    compactMode = event.target.checked;
+    localStorage.setItem("misaka_compact_mode", String(compactMode));
+    document.body.classList.toggle("compact-mode", compactMode);
+  });
+  $("settingsDesktopNotifications")?.addEventListener("change", (event) => {
+    desktopNotificationsEnabled = event.target.checked;
     localStorage.setItem(
       "misaka_desktop_notifications",
-      desktopNotificationsEnabled,
+      String(desktopNotificationsEnabled),
     );
     if (desktopNotificationsEnabled && "Notification" in window) {
       Notification.requestPermission();
     }
   });
+}
 
-document.getElementById("settingsHUDToggle").addEventListener("change", (e) => {
-  hudMode = e.target.checked;
-  localStorage.setItem("misaka_hud_mode", hudMode);
-  updateHUDButton();
-});
-
-document.getElementById("compactModeToggle").addEventListener("change", (e) => {
-  compactMode = e.target.checked;
-  localStorage.setItem("misaka_compact_mode", compactMode);
+function hydrateSettings() {
+  $("settingsVoiceEnabled") &&
+    ($("settingsVoiceEnabled").checked = voiceEnabled);
+  $("settingsAutoSpeak") && ($("settingsAutoSpeak").checked = autoSpeak);
+  $("settingsHudMode") && ($("settingsHudMode").checked = hudMode);
+  $("settingsCompactMode") && ($("settingsCompactMode").checked = compactMode);
+  $("settingsDesktopNotifications") &&
+    ($("settingsDesktopNotifications").checked = desktopNotificationsEnabled);
+  if (wakeWordToggle) {
+    wakeWordToggle.checked =
+      localStorage.getItem("wake_word_enabled") === "true";
+  }
   document.body.classList.toggle("compact-mode", compactMode);
-});
-
-document.getElementById("wakeWordToggle").addEventListener("change", (e) => {
-  if (!voiceWakeController) return;
-  const started = voiceWakeController.setEnabled(e.target.checked);
-  if (e.target.checked && !started) {
-    e.target.checked = false;
-  }
-});
-document.getElementById("btnClearAllData").addEventListener("click", () => {
-  if (confirm("Tem certeza? Isso vai limpar todos os dados locais.")) {
-    localStorage.clear();
-    showToast("Dados locais limpos.", "success");
-    location.reload();
-  }
-});
-
-// Modal listeners
-document.getElementById("btnModalApprove").addEventListener("click", () => {
-  if (pendingConfirmation) {
-    showToast("Ação aprovada.", "success");
-  }
-  hideConfirmation();
-});
-
-document.getElementById("btnModalDeny").addEventListener("click", () => {
-  hideConfirmation();
-  showToast("Ação negada.", "info");
-});
-
-modalOverlay.addEventListener("click", (e) => {
-  if (e.target === modalOverlay) hideConfirmation();
-});
-
-// ==================== Initialize ====================
-console.log("[Misaka] app.js loaded");
-console.log("[Misaka] misakaDesktop:", window.misakaDesktop ? "available" : "not available");
+  document.body.classList.toggle("hud-mode", hudMode);
+}
 
 if ("Notification" in window && Notification.permission === "default") {
   Notification.requestPermission();
 }
 
-// Load saved settings
-document.getElementById("speakSuffixToggle").checked =
-  localStorage.getItem("misaka_speak_suffix") !== "false";
-document.getElementById("desktopNotificationsToggle").checked =
-  desktopNotificationsEnabled;
-document.getElementById("settingsHUDToggle").checked = hudMode;
-document.getElementById("compactModeToggle").checked = compactMode;
-document.getElementById("wakeWordToggle").checked =
-  localStorage.getItem("wake_word_enabled") === "true";
-if (compactMode) document.body.classList.add("compact-mode");
-if (hudMode) document.body.classList.add("hud-mode");
-
+bindEvents();
+hydrateSettings();
 loadStatus();
-detectDesktopBridge().then(updateDesktopBridgeUI);
 loadAlerts();
 initVoiceControls();
 updateVoiceButton();
 updateHUDButton();
-messageInput.focus();
-initVoiceWakeController();
+messageInput?.focus();
+initVoiceWake();
 
 setInterval(loadStatus, MISAKA_CONFIG.POLL_INTERVAL_MS || 15000);
 setInterval(loadAlerts, MISAKA_CONFIG.ALERTS_POLL_INTERVAL_MS || 10000);

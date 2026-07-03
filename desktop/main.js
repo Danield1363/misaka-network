@@ -29,7 +29,11 @@ function writeLog(level, args) {
       .map((a) => {
         if (a instanceof Error) return a.stack || a.message;
         if (typeof a === "object") {
-          try { return JSON.stringify(a); } catch { return String(a); }
+          try {
+            return JSON.stringify(a);
+          } catch {
+            return String(a);
+          }
         }
         return String(a == null ? "" : a);
       })
@@ -38,9 +42,15 @@ function writeLog(level, args) {
   } catch (_) {}
 }
 
-function safeLog(...args) { writeLog("INFO", args); }
-function safeWarn(...args) { writeLog("WARN", args); }
-function safeError(...args) { writeLog("ERROR", args); }
+function safeLog(...args) {
+  writeLog("INFO", args);
+}
+function safeWarn(...args) {
+  writeLog("WARN", args);
+}
+function safeError(...args) {
+  writeLog("ERROR", args);
+}
 
 // --- Monkey-patch console so no direct console.* can EPIPE-crash ---
 console.log = (...args) => safeLog(...args);
@@ -69,6 +79,9 @@ let tray;
 let isQuitting = false;
 let notifiedAlertIds = new Set();
 let nativeVoiceBridge = null;
+let pendingWakeWordEnabled = null;
+
+process.env.MISAKA_DESKTOP_LOG_FILE = LOG_FILE;
 
 const isPackaged = app.isPackaged;
 
@@ -84,8 +97,7 @@ function getDashboardDir() {
 const DASHBOARD_DIR = getDashboardDir();
 
 const CONFIG = {
-  API_BASE_URL:
-    process.env.MISAKA_API_BASE_URL || "http://127.0.0.1:8000/api",
+  API_BASE_URL: process.env.MISAKA_API_BASE_URL || "http://127.0.0.1:8000/api",
   DASHBOARD_URL: process.env.MISAKA_DASHBOARD_URL || "",
   START_MINIMIZED: process.env.START_MINIMIZED === "true",
   ALWAYS_ON_TOP_DEFAULT: process.env.ALWAYS_ON_TOP_DEFAULT === "true",
@@ -217,7 +229,9 @@ function createWindow() {
     width: 1200,
     height: 800,
     title: "Misaka Network",
-    icon: path.join(__dirname, "assets", "icon.ico"),
+    icon: fs.existsSync(path.join(__dirname, "assets", "icon.ico"))
+      ? path.join(__dirname, "assets", "icon.ico")
+      : undefined,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -245,6 +259,10 @@ function createWindow() {
         `,
       )
       .catch(() => {});
+    if (pendingWakeWordEnabled !== null) {
+      sendWakeWordState(pendingWakeWordEnabled);
+      pendingWakeWordEnabled = null;
+    }
   });
 
   mainWindow.on("close", (event) => {
@@ -272,9 +290,9 @@ function createTray() {
   tray.setToolTip("Misaka Network");
 
   const contextMenu = Menu.buildFromTemplate([
-    { label: "Show Misaka", click: () => mainWindow.show() },
+    { label: "Abrir Misaka", click: () => mainWindow.show() },
     {
-      label: "Always on Top",
+      label: "Always on top",
       type: "checkbox",
       checked: CONFIG.ALWAYS_ON_TOP_DEFAULT,
       click: (item) => mainWindow.setAlwaysOnTop(item.checked),
@@ -304,7 +322,7 @@ function createTray() {
     },
     { type: "separator" },
     {
-      label: "Quit",
+      label: "Sair",
       click: () => {
         isQuitting = true;
         app.quit();
@@ -317,19 +335,37 @@ function createTray() {
 }
 
 function setWakeWordFromTray(enabled) {
+  safeLog("[Misaka Desktop] tray wake-word:set-enabled", enabled);
   if (!mainWindow) return;
   if (mainWindow.isMinimized()) mainWindow.restore();
   mainWindow.show();
-  mainWindow.webContents.send("wake-word:set-enabled", { enabled });
+  sendWakeWordState(enabled);
+}
+
+function sendWakeWordState(enabled) {
+  pendingWakeWordEnabled = Boolean(enabled);
+  if (
+    !mainWindow ||
+    mainWindow.isDestroyed() ||
+    mainWindow.webContents.isLoading()
+  ) {
+    return;
+  }
+  mainWindow.webContents.send("wake-word:set-enabled", {
+    enabled: Boolean(enabled),
+  });
+  pendingWakeWordEnabled = null;
 }
 
 function setupMediaPermissions() {
   session.defaultSession.setPermissionRequestHandler(
     (webContents, permission, callback) => {
       if (permission === "media" || permission === "microphone") {
+        safeLog("[Misaka Desktop] permission granted:", permission);
         callback(true);
         return;
       }
+      safeWarn("[Misaka Desktop] permission denied:", permission);
       callback(false);
     },
   );
@@ -423,8 +459,7 @@ const WINDOWS_APP_LAUNCHERS = {
     spawn("notepad.exe", [], { detached: true, stdio: "ignore" }).unref(),
   calculator: () =>
     spawn("calc.exe", [], { detached: true, stdio: "ignore" }).unref(),
-  cmd: () =>
-    spawn("cmd.exe", [], { detached: true, stdio: "ignore" }).unref(),
+  cmd: () => spawn("cmd.exe", [], { detached: true, stdio: "ignore" }).unref(),
   powershell: () =>
     spawn("powershell.exe", [], { detached: true, stdio: "ignore" }).unref(),
 };
@@ -503,15 +538,18 @@ async function openExternalUrl(url) {
 function setupIPC() {
   ipcMain.handle("get-config", () => CONFIG);
 
-  ipcMain.handle("desktop:show-notification", async (_event, { title, body }) => {
-    if (Notification.isSupported()) {
-      const notification = new Notification({ title, body });
-      notification.show();
-      notification.on("click", () => mainWindow.show());
-      return { success: true };
-    }
-    return { success: false, error: "Notificacoes nao suportadas." };
-  });
+  ipcMain.handle(
+    "desktop:show-notification",
+    async (_event, { title, body }) => {
+      if (Notification.isSupported()) {
+        const notification = new Notification({ title, body });
+        notification.show();
+        notification.on("click", () => mainWindow.show());
+        return { success: true };
+      }
+      return { success: false, error: "Notificacoes nao suportadas." };
+    },
+  );
 
   ipcMain.handle("desktop:open-app", async (_event, appName) => {
     const name =
@@ -525,7 +563,11 @@ function setupIPC() {
 
   ipcMain.handle("desktop:open-url", async (_event, url) => {
     const target =
-      typeof url === "string" ? url : url && typeof url.url === "string" ? url.url : "";
+      typeof url === "string"
+        ? url
+        : url && typeof url.url === "string"
+          ? url.url
+          : "";
     return openExternalUrl(target);
   });
 

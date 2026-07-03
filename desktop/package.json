@@ -1,6 +1,6 @@
 {
   "name": "misaka-desktop",
-  "version": "0.3.0",
+  "version": "0.3.7",
   "description": "Misaka Network Desktop App",
   "main": "main.js",
   "scripts": {
@@ -9,10 +9,9 @@
     "pack": "electron-builder --dir",
     "dist": "electron-builder --win nsis portable"
   },
-  "dependencies": {
-    "electron": "^28.0.0"
-  },
+  "dependencies": {},
   "devDependencies": {
+    "electron": "^28.0.0",
     "electron-builder": "^24.0.0"
   },
   "build": {
@@ -26,23 +25,29 @@
       "preload.js",
       "package.json",
       "assets/**/*",
-      "control/**/*"
+      "control/**/*",
+      "voice/nativeVoiceBridge.js",
+      "voice/python/**/*"
     ],
     "extraResources": [
       {
         "from": "../dashboard",
         "to": "dashboard",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       }
     ],
     "win": {
-      "target": ["nsis", "portable"],
-      "icon": "assets/icon.ico"
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "signAndEditExecutable": false
     },
     "nsis": {
       "oneClick": false,
-      "allowToChangeInstallationDirectory": true,
-      "installerIcon": "assets/icon.ico"
+      "allowToChangeInstallationDirectory": true
     }
   },
   "author": "Daniel",

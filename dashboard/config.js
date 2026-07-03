@@ -25,7 +25,7 @@ const MISAKA_CONFIG = {
     return resolveApiBaseUrl();
   },
   APP_NAME: "Misaka Dashboard",
-  VERSION: "0.3.5",
+  VERSION: "0.3.7",
   POLL_INTERVAL_MS: 15000,
   ALERTS_POLL_INTERVAL_MS: 10000,
   ENABLE_VOICE: true,

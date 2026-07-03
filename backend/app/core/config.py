@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     )
 
     PROJECT_NAME: str = "Misaka Core"
-    VERSION: str = "0.3 Genesis"
+    VERSION: str = "0.3.7"
     ENVIRONMENT: str = "development"
     DEBUG: bool = False
 
@@ -38,6 +38,15 @@ class Settings(BaseSettings):
     ANDROID_BRIDGE_ENABLED: bool = False
     DESKTOP_CONTROL_ENABLED: bool = True
     WAKE_WORD_ENABLED: bool = False
+
+    VOICE_ENABLED: bool = True
+    VOICE_PROVIDER: str = "mock"
+    VOICE_MAX_AUDIO_SECONDS: int = 10
+    VOICE_MAX_AUDIO_BYTES: int = 5_000_000
+    VOICE_LANGUAGE: str = "pt"
+    VOICE_MOCK_TRANSCRIPT: str = ""
+    OPENAI_API_KEY: str = ""
+    OPENAI_TRANSCRIPTION_MODEL: str = "gpt-4o-mini-transcribe"
 
 
 @lru_cache()

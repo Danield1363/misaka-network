@@ -206,3 +206,79 @@ def test_chat_open_youtube_channel_with_open_verb(client):
     assert action["type"] == "open_url"
     assert "youtube.com/results" in action["url"]
     assert "alanzoka" in action["url"]
+
+
+@pytest.mark.parametrize(
+    ("message", "app"),
+    [
+        ("abrir notepad", "notepad"),
+        ("abrir explorer", "explorer"),
+        ("abrir calculadora", "calculator"),
+        ("abrir discord", "discord"),
+        ("abrir vscode", "vscode"),
+    ],
+)
+def test_chat_desktop_apps_do_not_fall_to_llm(client, message, app):
+    response = client.post("/api/chat", json={"message": message})
+    assert response.status_code == 200
+    data = response.json()
+    action = data["metadata"]["client_action"]
+    assert data["agent"] == "command_router"
+    assert data["metadata"]["intent"] == "desktop"
+    assert action["type"] == "open_app"
+    assert action["app"] == app
+    assert "tutorial" not in data["response"].lower()
+
+
+def test_chat_voice_wake_phrase_youtube(client):
+    response = client.post("/api/chat", json={"message": "Misaka, abra o YouTube"})
+    assert response.status_code == 200
+    data = response.json()
+    action = data["metadata"]["client_action"]
+    assert data["agent"] == "command_router"
+    assert action["type"] == "open_url"
+    assert action["url"] == "https://www.youtube.com"
+
+
+def test_chat_open_youtube_video_search(client):
+    response = client.post(
+        "/api/chat",
+        json={"message": "abrir video do alanzoka de minecraft"},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    action = data["metadata"]["client_action"]
+    assert data["agent"] == "command_router"
+    assert "youtube.com/results" in action["url"]
+    assert "alanzoka" in action["url"]
+    assert "minecraft" in action["url"]
+
+
+@pytest.mark.parametrize(
+    ("message", "provider", "needle"),
+    [
+        ("pesquise wake on lan no google", "google", "wake on lan"),
+        ("pesquise misaka network no github", "github", "misaka network"),
+        ("pesquise cobblemon no modrinth", "modrinth", "cobblemon"),
+        ("procure atm 10 no curseforge", "curseforge", "atm 10"),
+    ],
+)
+def test_chat_search_sites_do_not_fall_to_llm(client, message, provider, needle):
+    response = client.post("/api/chat", json={"message": message})
+    assert response.status_code == 200
+    data = response.json()
+    action = data["metadata"]["client_action"]
+    assert data["agent"] == "command_router"
+    assert action["type"] in ("search_web", "open_url")
+    assert needle.split()[0] in (action.get("query", "") + action.get("url", ""))
+    if action["type"] == "search_web":
+        assert action["provider"] == provider
+
+
+def test_chat_dangerous_desktop_command_requires_confirmation(client):
+    response = client.post("/api/chat", json={"message": "desligar computador"})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["agent"] == "command_router"
+    assert data["metadata"]["requires_confirmation"] is True
+    assert data["metadata"]["command"] == "dangerous_desktop_action"

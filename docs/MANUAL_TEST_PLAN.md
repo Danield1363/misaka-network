@@ -1,126 +1,96 @@
-# Manual Test Plan — Dashboard
+# Manual Test Plan - Misaka v0.3.7
 
-## Prerequisites
+## Pre-requisitos
 
-1. Backend running on `http://localhost:8000`
-2. Dashboard open at `http://localhost:8000` or `http://localhost:3000`
+1. Backend rodando em `http://127.0.0.1:8000`.
+2. `VOICE_ENABLED=true`.
+3. Para mock: `VOICE_PROVIDER=mock` e `VOICE_MOCK_TRANSCRIPT="abrir youtube"`.
+4. Para provider real: `VOICE_PROVIDER=openai`, `OPENAI_API_KEY` e `OPENAI_TRANSCRIPTION_MODEL`.
+5. Desktop iniciado com `cd desktop && npm start`.
 
-## Test Cases
+## Chat E Comandos
 
-### 1. Chat Basic Flow
-1. Type "Olá Misaka" in the chat input
-2. Press Enter or click Enviar
-3. Verify: Response appears with "diz Misaka Misaka." suffix
-4. Verify: Core visualizer animates (thinking → speaking → idle)
+1. Digitar `abrir notepad`.
+   - Esperado: Notepad abre, resposta curta de sucesso.
+2. Digitar `abrir explorer`.
+   - Esperado: Explorador de Arquivos abre.
+3. Digitar `abrir calculadora`.
+   - Esperado: Calculadora abre.
+4. Digitar `abrir discord`.
+   - Esperado: Discord abre ou erro real da bridge.
+5. Digitar `abrir vs code`.
+   - Esperado: VS Code abre ou erro real da bridge.
+6. Digitar `abra o youtube`.
+   - Esperado: YouTube abre sem erro falso de popup.
+7. Digitar `abra o canal do alanzoka no youtube`.
+   - Esperado: busca correta no YouTube.
+8. Digitar `desligar computador`.
+   - Esperado: confirmacao exigida, nada executado.
 
-### 2. Command: Clear Alerts
-1. Type "limpe os alertas atuais"
-2. Press Enter
-3. Verify: Response says alerts were marked as seen
-4. Verify: Alert count updates in sidebar
+## Cloud Voice No Electron
 
-### 3. Command: HUD Toggle
-1. Type "ative o modo hud"
-2. Press Enter
-3. Verify: Background becomes transparent, HUD overlay appears
-4. Type "desative o modo hud"
-5. Verify: Normal background returns
+1. Selecionar `Cloud Voice`.
+2. Selecionar modo `Hibrido`.
+3. Clicar `Ativar escuta`.
+4. Aceitar aviso de captura.
+5. Permitir microfone.
+6. Falar `abrir youtube`.
+7. Verificar:
+   - status passa por gravando/transcrevendo/processando;
+   - ultimo ouvido mostra texto transcrito;
+   - comando detectado aparece;
+   - `/api/chat` recebe o texto;
+   - client_action abre a pagina;
+   - resposta so anuncia sucesso apos retorno da acao.
 
-### 4. Command: Voice Toggle
-1. Type "ligue a voz"
-2. Press Enter
-3. Verify: Voice indicator shows enabled
-4. Type "desligue a voz"
-5. Verify: Voice indicator shows disabled
+## Cloud Voice Mock
 
-### 5. Voice Auto-Speak
-1. Enable auto-speak in voice panel
-2. Send multiple messages
-3. Verify: Every response is spoken aloud
-4. Verify: Previous speech is cancelled when new response arrives
+1. Configurar `VOICE_PROVIDER=mock`.
+2. Configurar `VOICE_MOCK_TRANSCRIPT="abrir youtube"`.
+3. Ativar escuta.
+4. Gravar qualquer audio curto.
+5. Esperado: a transcricao mock vira `abrir youtube` e abre YouTube.
 
-### 6. Voice Controls
-1. Click "Test" button
-2. Verify: "Olá, eu sou a Misaka" is spoken
-3. Click "Stop" button
-4. Verify: Speech stops immediately
-5. Adjust rate slider
-6. Adjust pitch slider
-7. Verify: New speech uses updated settings
+## Provider Nao Configurado
 
-### 7. Settings Drawer
-1. Click gear icon in header
-2. Verify: Settings drawer slides in from right
-3. Verify: LLM status shows provider and model
-4. Verify: Voice settings show current configuration
-5. Press ESC
-6. Verify: Drawer closes
-7. Open again, click outside
-8. Verify: Drawer closes
+1. Configurar `VOICE_PROVIDER=openai` sem `OPENAI_API_KEY`.
+2. Ativar escuta.
+3. Esperado: erro claro `Transcricao de voz nao configurada no backend.`
+4. Verificar que o botao nao fica em estado falso de escuta.
 
-### 8. Alert Management
-1. Verify: Alert count shows correct number
-2. Click "✓ All" button
-3. Verify: All alerts marked as seen
-4. Click "↻" refresh button
-5. Verify: Alerts refresh from server
+## Microfone Negado
 
-### 9. Alert Filters
-1. Click "Critical" filter
-2. Verify: Only critical alerts shown
-3. Click "Important" filter
-4. Verify: Only important alerts shown
-5. Click "All" filter
-6. Verify: All alerts shown
+1. Bloquear permissao de microfone.
+2. Clicar `Ativar escuta`.
+3. Esperado: `Permissao de microfone negada.`
+4. Verificar que `enabled=false`, sem loop de toast.
 
-### 10. Clear Chat
-1. Send several messages
-2. Click "Clear" button
-3. Verify: Chat clears
-4. Verify: "Conversa reiniciada" message appears
+## Vivaldi
 
-### 11. Copy Last Response
-1. Send a message
-2. Click copy icon
-3. Verify: "Copiado!" toast appears
-4. Paste in text editor
-5. Verify: Response text is correct
+1. Abrir dashboard no Vivaldi.
+2. Selecionar `Cloud Voice`.
+3. Permitir microfone.
+4. Falar `abrir youtube`.
+5. Esperado: funciona sem `SpeechRecognition`.
 
-### 12. Toast Notifications
-1. Perform actions that trigger toasts
-2. Verify: Toasts appear in bottom-right
-3. Verify: Toasts auto-dismiss after 4 seconds
-4. Verify: Toasts show correct type (success/error/info)
+## Web Speech Fallback
 
-### 13. LLM Status Display
-1. Verify: Provider badge shows "mock" or "gemini"
-2. Verify: Model name displayed correctly
-3. If Gemini: Verify fallback status when active
-4. If mock: Verify warning message displayed
+1. Selecionar `Web Speech fallback`.
+2. Usar Chrome/Edge.
+3. Falar `Misaka, abra o YouTube`.
+4. Esperado: se o navegador suportar, comando executa; se nao suportar, erro claro.
 
-### 14. Module Status Grid
-1. Verify: Brain shows "Active"
-2. Verify: Memory shows "Enabled" or "Disabled"
-3. Verify: Calendar shows status
-4. Verify: Tools shows "Active"
-5. Verify: LLM shows status
+## Tray
 
-### 15. Responsive Layout
-1. Resize browser to < 1024px
-2. Verify: Alerts sidebar hides
-3. Resize to < 768px
-4. Verify: Left sidebar hides
-5. Verify: Chat takes full width
+1. Abrir menu da bandeja.
+2. Clicar `Ativar escuta Misaka`.
+3. Esperado: dashboard recebe evento e tenta iniciar a escuta.
+4. Clicar `Desativar escuta Misaka`.
+5. Esperado: escuta para.
 
-### 16. Error Handling
-1. Stop the backend
-2. Send a message
-3. Verify: "Erro ao conectar com o servidor" appears
-4. Restart backend
-5. Verify: Chat works again
+## Build
 
-### 17. Keyboard Shortcuts
-1. Press Enter in chat input
-2. Verify: Message sends
-3. Press Shift+Enter
-4. Verify: New line in input (no send)
+1. Rodar `cd desktop && npm run dist`.
+2. Abrir `desktop/dist/Misaka Network 0.3.7.exe`.
+3. Instalar via `Misaka Network Setup 0.3.7.exe`.
+4. Verificar dashboard, bridge e logs.

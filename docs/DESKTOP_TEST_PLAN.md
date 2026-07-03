@@ -1,89 +1,82 @@
-# Desktop Test Plan — Misaka Network
+# Desktop Test Plan - Misaka Network
 
-## Prerequisites
+## Pre-requisitos
 
-1. Node.js installed
-2. `cd desktop && npm install`
+```bash
+cd desktop
+npm install
+```
 
-## Test Cases
+Backend recomendado:
 
-### 1. Basic Launch
-1. Run `npm start`
-2. Verify: Window opens with Misaka dashboard
-3. Verify: Window title is "Misaka Network"
-4. Verify: No console errors in dev tools
+```bash
+cd backend
+python -m uvicorn main:app --reload
+```
 
-### 2. Dashboard Loading
-1. Verify: Dashboard loads (not /docs)
-2. Verify: API status shows in sidebar
-3. Verify: Chat input is functional
+## Start
 
-### 3. Window Management
-1. Click X to close
-2. Verify: Window minimizes to tray (doesn't quit)
-3. Double-click tray icon
-4. Verify: Window reappears
+1. Rodar `npm start`.
+2. Verificar que a janela abre com a dashboard.
+3. Verificar que nao abre `/docs`.
+4. Verificar que o processo nao fecha sozinho apos 10 segundos.
+5. Conferir `%APPDATA%\misaka-desktop\misaka-desktop.log`.
+6. Esperado: sem `EPIPE`.
 
-### 4. System Tray
-1. Right-click tray icon
-2. Verify: Context menu shows (Show, Always on Top, HUD Mode, Quit)
-3. Click "Show Misaka"
-4. Verify: Window shows
-5. Click "Always on Top"
-6. Verify: Window stays on top of other windows
-7. Click "HUD Mode"
-8. Verify: Dashboard switches to HUD overlay mode
+## Bridge
 
-### 5. Notifications
-1. Ensure backend has critical alerts
-2. Wait for polling cycle (10 seconds)
-3. Verify: Native notification appears
-4. Click notification
-5. Verify: Window focuses
+No chat:
 
-### 6. Notification Deduplication
-1. Wait for notification to appear
-2. Wait for next polling cycle
-3. Verify: Same notification doesn't appear again
+1. `abrir notepad`
+2. `abrir explorer`
+3. `abrir calculadora`
+4. `abrir discord`
+5. `abrir vs code`
+6. `abra o youtube`
+7. `abra o canal do alanzoka no youtube`
 
-### 7. Debug Mode
-1. Run `npm run debug`
-2. Verify: Logs appear in terminal
-3. Verify: Electron debug info visible
+Esperado:
 
-### 8. Build .exe
-1. Run `npm run dist`
-2. Verify: `dist/` folder created
-3. Verify: .exe file exists
-4. Run the .exe
-5. Verify: App opens correctly
-6. Verify: Dashboard loads in .exe
+- apps abrem quando instalados;
+- falha mostra motivo real;
+- URL usa `openUrl`;
+- nenhuma resposta diz sucesso antes do retorno `success=true`.
 
-### 9. Packaged Mode
-1. Run `npm run pack`
-2. Verify: Unpacked app in `dist/win-unpacked/`
-3. Run the unpacked app
-4. Verify: Dashboard loads from resources
+## Tray
 
-### 10. Error Handling
-1. Set invalid MISAKA_DASHBOARD_URL
-2. Run `npm start`
-3. Verify: Error window appears with clear message
-4. Fix the URL
-5. Verify: App works normally
+1. Abrir menu de tray.
+2. Clicar `Abrir Misaka`.
+3. Clicar `Ativar escuta Misaka`.
+4. Verificar dashboard iniciando a escuta.
+5. Clicar `Desativar escuta Misaka`.
+6. Verificar dashboard parando a escuta.
+7. Alternar `Always on top`.
+8. Alternar `HUD Mode`.
 
-### 11. IPC Bridge
-1. Open dev tools in renderer
-2. Check `window.misakaDesktop` exists
-3. Verify: `isAvailable` is true
-4. Verify: Methods are callable
+## Cloud Voice
 
-### 12. Always On Top Persistence
-1. Enable always on top via tray
-2. Close and reopen app
-3. Verify: Setting persists (if saved)
+1. Selecionar `Cloud Voice`.
+2. Selecionar `Hibrido`.
+3. Clicar `Ativar escuta`.
+4. Permitir microfone.
+5. Falar `abrir youtube`.
+6. Verificar transcricao, comando detectado, acao e resposta.
 
-### 13. Memory Usage
-1. Open app
-2. Check memory usage in task manager
-3. Verify: Memory usage is reasonable (< 200MB)
+## Erros De Voz
+
+1. Negar microfone.
+   - Esperado: `Permissao de microfone negada.`
+2. Remover provider real.
+   - Esperado: `Transcricao de voz nao configurada no backend.`
+3. Selecionar Web Speech em ambiente sem suporte.
+   - Esperado: erro claro, sem estado falso de escuta.
+
+## Build
+
+1. Rodar `npm run dist`.
+2. Esperado:
+   - `desktop/dist/Misaka Network Setup 0.3.7.exe`
+   - `desktop/dist/Misaka Network 0.3.7.exe`
+3. Abrir portable.
+4. Instalar pelo setup.
+5. Repetir smoke test de dashboard e bridge.

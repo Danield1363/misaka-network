@@ -1,4 +1,5 @@
 import logging
+import re
 from typing import Any
 from app.commands.parser import (
     detect_intent,
@@ -10,13 +11,25 @@ from app.commands.parser import (
     extract_search_query,
 )
 from app.commands.intents import Intent
-from app.commands.desktop_resolver import detect_desktop_command
+from app.commands.desktop_resolver import detect_desktop_command, normalize_text
 from app.tools.executor import ToolExecutor
 from app.web_actions.engine import WebActionEngine
 
 logger = logging.getLogger(__name__)
 
 web_action_engine = WebActionEngine()
+
+DANGEROUS_COMMAND_PATTERNS = [
+    r"\bdeslig(?:ar|ue|a)\s+(?:o\s+)?(?:computador|pc)\b",
+    r"\breinici(?:ar|e|a)\s+(?:o\s+)?(?:computador|pc)\b",
+    r"\b(?:apagar|deletar|remover)\s+(?:arquivo|pasta|diretorio)\b",
+    r"\bformatar\b",
+    r"\brodar\s+script\b",
+    r"\bexecutar\s+terminal\b",
+    r"\benviar\s+mensagem\b",
+    r"\bcomprar\b",
+    r"\bpagar\b",
+]
 
 
 class CommandRouter:
@@ -28,6 +41,10 @@ class CommandRouter:
         message: str,
         context: dict[str, Any] | None = None,
     ) -> dict[str, Any] | None:
+        dangerous_result = self._route_dangerous_command(message)
+        if dangerous_result is not None:
+            return dangerous_result
+
         desktop_cmd = detect_desktop_command(message)
         if desktop_cmd.matched:
             logger.info(
@@ -156,6 +173,32 @@ class CommandRouter:
                 "error": str(e),
                 "response_message": f"Erro ao executar comando: {e}",
             }
+
+    def _route_dangerous_command(self, message: str) -> dict[str, Any] | None:
+        normalized = normalize_text(message)
+        if not any(re.search(pattern, normalized) for pattern in DANGEROUS_COMMAND_PATTERNS):
+            return None
+
+        from app.commands.confirmations import confirmation_manager
+
+        conf = confirmation_manager.create_confirmation(
+            intent="dangerous_desktop_action",
+            tool_name="desktop.confirmed_action",
+            parameters={"text": message},
+            message=(
+                "Esse comando pode afetar o computador e requer confirmacao. "
+                "Posso continuar?"
+            ),
+            original_message=message,
+        )
+        return {
+            "type": "confirmation_required",
+            "intent": "dangerous_desktop_action",
+            "tool_name": "desktop.confirmed_action",
+            "message": conf.message,
+            "confirmation_id": conf.id,
+            "parameters": {"text": message},
+        }
 
     def _build_client_action(
         self, intent_name: str, parameters: dict, message: str
