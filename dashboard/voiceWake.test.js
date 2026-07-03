@@ -6,6 +6,8 @@ const {
   chooseVoiceWakeMode,
   isWebSpeechSupported,
   isNativeDesktopSupported,
+  isDirectVoiceCommand,
+  classifyVoiceCommand,
 } = require("./voiceWake");
 
 assert.strictEqual(
@@ -104,6 +106,58 @@ startFailureController.start().then((result) => {
 
   runModeSelectionTests();
 });
+
+// --- Direct command tests ---
+
+function runDirectCommandTests() {
+  // isDirectVoiceCommand
+  assert.strictEqual(isDirectVoiceCommand("abrir youtube"), true);
+  assert.strictEqual(isDirectVoiceCommand("abra o discord"), true);
+  assert.strictEqual(isDirectVoiceCommand("abrir notepad no meu computador"), true);
+  assert.strictEqual(isDirectVoiceCommand("pesquise wake on lan no google"), true);
+  assert.strictEqual(isDirectVoiceCommand("procure alanzoka no youtube"), true);
+  assert.strictEqual(isDirectVoiceCommand("limpe os alertas"), true);
+  assert.strictEqual(isDirectVoiceCommand("ative o hud"), true);
+  assert.strictEqual(isDirectVoiceCommand("qual e a capital do brasil"), false);
+  assert.strictEqual(isDirectVoiceCommand("como vai voce"), false);
+  assert.strictEqual(isDirectVoiceCommand(""), false);
+
+  // classifyVoiceCommand - safe
+  const safe1 = classifyVoiceCommand("abrir youtube");
+  assert.strictEqual(safe1.matched, true);
+  assert.strictEqual(safe1.risk, "safe");
+  assert.strictEqual(safe1.requires_confirmation, false);
+
+  const safe2 = classifyVoiceCommand("pesquise wake on lan no google");
+  assert.strictEqual(safe2.matched, true);
+  assert.strictEqual(safe2.risk, "safe");
+
+  const safe3 = classifyVoiceCommand("limpe os alertas");
+  assert.strictEqual(safe3.matched, true);
+  assert.strictEqual(safe3.risk, "safe");
+
+  // classifyVoiceCommand - dangerous
+  const dangerous1 = classifyVoiceCommand("desligar computador");
+  assert.strictEqual(dangerous1.matched, true);
+  assert.strictEqual(dangerous1.risk, "dangerous");
+  assert.strictEqual(dangerous1.requires_confirmation, true);
+
+  const dangerous2 = classifyVoiceCommand("reiniciar pc");
+  assert.strictEqual(dangerous2.matched, true);
+  assert.strictEqual(dangerous2.risk, "dangerous");
+
+  const dangerous3 = classifyVoiceCommand("formatar");
+  assert.strictEqual(dangerous3.matched, true);
+  assert.strictEqual(dangerous3.risk, "dangerous");
+
+  // classifyVoiceCommand - not matched
+  const nomatch = classifyVoiceCommand("qual e a capital do brasil");
+  assert.strictEqual(nomatch.matched, false);
+
+  console.log("direct command tests passed");
+}
+
+runDirectCommandTests();
 
 // --- Mode selection tests ---
 

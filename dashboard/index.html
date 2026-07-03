@@ -102,6 +102,14 @@
                             <button class="btn-stop-voice" id="btnStopVoice">Stop</button>
                         </div>
                         <div class="wake-controls">
+                            <label class="toggle-label" style="margin-bottom:6px">
+                                <span>Modo de escuta:</span>
+                                <select id="voiceCommandMode" style="margin-left:6px;padding:2px 6px;border-radius:4px;border:1px solid var(--color-border);background:var(--color-bg);color:var(--color-text)">
+                                    <option value="hybrid">Hibrido</option>
+                                    <option value="wake_word">Apenas "Misaka"</option>
+                                    <option value="direct_command">Comandos diretos</option>
+                                </select>
+                            </label>
                             <button class="btn-wake-word" id="btnWakeWord" type="button">Ativar escuta Misaka</button>
                             <div class="wake-status" id="wakeStatus">Wake: desligado</div>
                             <div class="wake-detail" id="wakeLastTranscript">Último ouvido: -</div>

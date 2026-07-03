@@ -71,6 +71,103 @@
     return raw.replace(rawPattern, "").trim();
   }
 
+  // --- Direct Command Detection ---
+
+  const DIRECT_VERBS = [
+    "abrir", "abra", "abre", "iniciar", "inicia",
+    "executar", "execute", "rodar", "roda", "rode",
+    "pesquisar", "pesquise", "procurar", "procure",
+    "buscar", "busque",
+    "ative", "ativar", "desative", "desativar",
+    "limpe", "limpar", "mostrar", "mostre",
+    "atualizar", "atualize",
+    "abra", "abrir",
+  ];
+
+  const DANGEROUS_PATTERNS = [
+    "desligar\\s+(o\\s+)?computador",
+    "desligar\\s+pc",
+    "reiniciar\\s+(o\\s+)?computador",
+    "reiniciar\\s+pc",
+    "apagar\\s+arquivo",
+    "deletar\\s+arquivo",
+    "formatar",
+    "executar\\s+comando",
+    "rodar\\s+script",
+    "enviar\\s+mensagem",
+    "comprar",
+    "pagar",
+    "remover\\s+(o\\s+)?sistema",
+  ];
+
+  const SAFE_PREFIXES = [
+    "abrir", "abra", "abre", "iniciar", "inicia",
+    "executar", "execute", "rodar", "roda", "rode",
+    "pesquisar", "pesquise", "procurar", "procure",
+    "buscar", "busque",
+    "ative", "ativar", "desative", "desativar",
+    "limpe", "limpar", "mostrar", "mostre",
+    "atualizar", "atualize",
+  ];
+
+  function isDirectVoiceCommand(text) {
+    const normalized = normalizeVoiceText(text);
+    if (!normalized) return false;
+
+    for (const verb of SAFE_PREFIXES) {
+      if (normalized.startsWith(verb + " ") || normalized === verb) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function extractDirectVoiceCommand(text) {
+    const normalized = normalizeVoiceText(text);
+    if (!normalized) return null;
+
+    for (const verb of SAFE_PREFIXES) {
+      if (normalized.startsWith(verb + " ")) {
+        return normalized;
+      }
+      if (normalized === verb) {
+        return normalized;
+      }
+    }
+    return null;
+  }
+
+  function classifyVoiceCommand(text) {
+    const normalized = normalizeVoiceText(text);
+    if (!normalized) return { matched: false };
+
+    for (const pattern of DANGEROUS_PATTERNS) {
+      if (new RegExp(pattern).test(normalized)) {
+        return {
+          matched: true,
+          command: normalized,
+          mode: "direct_command",
+          risk: "dangerous",
+          requires_confirmation: true,
+        };
+      }
+    }
+
+    for (const verb of SAFE_PREFIXES) {
+      if (normalized.startsWith(verb + " ") || normalized === verb) {
+        return {
+          matched: true,
+          command: normalized,
+          mode: "direct_command",
+          risk: "safe",
+          requires_confirmation: false,
+        };
+      }
+    }
+
+    return { matched: false };
+  }
+
   function isWebSpeechSupported(win) {
     const w = win || root;
     return Boolean(w.SpeechRecognition || w.webkitSpeechRecognition);
@@ -126,6 +223,9 @@
       this.lastError = "";
       this.voiceMode = "unavailable";
       this._nativeCleanups = [];
+      this.voiceCommandMode = "hybrid";
+      this.lastExecutedCommand = "";
+      this.lastExecutedAt = 0;
 
       this.settings = {
         wake_phrases: DEFAULT_WAKE_PHRASES.slice(),
@@ -133,6 +233,8 @@
         wake_auto_restart: true,
         wake_command_timeout_ms: 8000,
         wake_start_on_launch: false,
+        voice_command_mode: "hybrid",
+        voice_command_debounce_ms: 2500,
       };
     }
 
@@ -469,6 +571,7 @@
       const cleanText = String(text || "").trim();
       if (!cleanText) return null;
 
+      // If waiting for command after wake word
       if (this.waitingForCommand) {
         const commandFromWake = this.extractCommandFromWakePhrase(cleanText);
         const command = commandFromWake === null ? cleanText : commandFromWake;
@@ -476,25 +579,38 @@
         return command;
       }
 
-      const command = this.extractCommandFromWakePhrase(cleanText);
-      if (command === null) return null;
+      // Try wake phrase first
+      const wakeCommand = this.extractCommandFromWakePhrase(cleanText);
+      if (wakeCommand !== null) {
+        this.clearCommandTimer();
+        this.waitingForCommand = true;
+        this.updateState(STATES.wake_detected);
+        this.emitWakeDetected(cleanText);
 
-      this.clearCommandTimer();
-      this.waitingForCommand = true;
-      this.updateState(STATES.wake_detected);
-      this.emitWakeDetected(cleanText);
+        if (wakeCommand) {
+          this.sendVoiceCommand(wakeCommand);
+          return wakeCommand;
+        }
 
-      if (command) {
-        this.sendVoiceCommand(command);
-        return command;
+        this.updateState(STATES.listening_for_command, "Misaka ouvindo comando...");
+        this.commandCaptureTimer = root.setTimeout(() => {
+          this.waitingForCommand = false;
+          this.updateState(STATES.listening_for_wake, "Nenhum comando capturado.");
+        }, this.settings.wake_command_timeout_ms);
+        return "";
       }
 
-      this.updateState(STATES.listening_for_command, "Misaka ouvindo comando...");
-      this.commandCaptureTimer = root.setTimeout(() => {
-        this.waitingForCommand = false;
-        this.updateState(STATES.listening_for_wake, "Nenhum comando capturado.");
-      }, this.settings.wake_command_timeout_ms);
-      return "";
+      // Direct command mode
+      if (this.voiceCommandMode === "direct_command" || this.voiceCommandMode === "hybrid") {
+        const classification = classifyVoiceCommand(cleanText);
+        if (classification.matched) {
+          this.debug(`direct command: ${classification.command} risk=${classification.risk}`);
+          this.sendVoiceCommand(classification.command);
+          return classification.command;
+        }
+      }
+
+      return null;
     }
 
     extractCommandFromWakePhrase(text) {
@@ -504,6 +620,19 @@
     sendVoiceCommand(command) {
       const cleanCommand = String(command || "").trim();
       if (!cleanCommand) return Promise.resolve(null);
+
+      // Debounce: ignore duplicate command within cooldown
+      const now = Date.now();
+      const debounceMs = this.settings.voice_command_debounce_ms || 2500;
+      if (
+        cleanCommand === this.lastExecutedCommand &&
+        now - this.lastExecutedAt < debounceMs
+      ) {
+        this.debug(`debounced duplicate command: ${cleanCommand}`);
+        return Promise.resolve(null);
+      }
+      this.lastExecutedCommand = cleanCommand;
+      this.lastExecutedAt = now;
 
       this.clearCommandTimer();
       this.waitingForCommand = false;
@@ -599,6 +728,13 @@
       );
       this.settings.wake_start_on_launch =
         this.storage.getItem("wake_start_on_launch") === "true";
+
+      const savedMode = this.storage.getItem("voice_command_mode");
+      if (savedMode === "wake_word" || savedMode === "direct_command" || savedMode === "hybrid") {
+        this.voiceCommandMode = savedMode;
+        this.settings.voice_command_mode = savedMode;
+      }
+
       this.persistSettings();
     }
 
@@ -622,6 +758,16 @@
         "wake_start_on_launch",
         String(this.settings.wake_start_on_launch),
       );
+      this.storage.setItem("voice_command_mode", this.voiceCommandMode);
+    }
+
+    setVoiceCommandMode(mode) {
+      if (mode === "wake_word" || mode === "direct_command" || mode === "hybrid") {
+        this.voiceCommandMode = mode;
+        this.settings.voice_command_mode = mode;
+        this.persistSettings();
+        this.debug(`voiceCommandMode set to ${mode}`);
+      }
     }
 
     // --- Helpers ---
@@ -715,6 +861,9 @@
   root.VoiceWakeUtils = {
     normalizeVoiceText,
     extractCommandFromWakePhrase,
+    isDirectVoiceCommand,
+    extractDirectVoiceCommand,
+    classifyVoiceCommand,
     chooseVoiceWakeMode,
     isWebSpeechSupported,
     isNativeDesktopSupported,
@@ -727,6 +876,9 @@
       VoiceWakeController,
       normalizeVoiceText,
       extractCommandFromWakePhrase,
+      isDirectVoiceCommand,
+      extractDirectVoiceCommand,
+      classifyVoiceCommand,
       chooseVoiceWakeMode,
       isWebSpeechSupported,
       isNativeDesktopSupported,

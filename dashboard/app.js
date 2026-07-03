@@ -1055,6 +1055,10 @@ function initVoiceWakeController() {
   const initResult = voiceWakeController.init();
   console.log("[Misaka Wake] init result:", initResult, "mode:", voiceWakeController.voiceMode);
 
+  // Apply saved voice command mode
+  const savedCmdMode = localStorage.getItem("voice_command_mode") || "hybrid";
+  voiceWakeController.setVoiceCommandMode(savedCmdMode);
+
   if (window.misakaDesktop && window.misakaDesktop.onWakeWordSetEnabled) {
     window.misakaDesktop.onWakeWordSetEnabled(async (enabled) => {
       console.log("[Misaka Wake] onWakeWordSetEnabled:", enabled);
@@ -1230,6 +1234,27 @@ btnWakeWord.addEventListener("click", async () => {
     showToast(`Erro ao ativar escuta: ${err.message}`, "error");
   }
 });
+
+// Voice command mode selector
+const voiceCommandModeSelect = document.getElementById("voiceCommandMode");
+if (voiceCommandModeSelect) {
+  const savedMode = localStorage.getItem("voice_command_mode") || "hybrid";
+  voiceCommandModeSelect.value = savedMode;
+  voiceCommandModeSelect.addEventListener("change", (e) => {
+    const mode = e.target.value;
+    localStorage.setItem("voice_command_mode", mode);
+    if (voiceWakeController) {
+      voiceWakeController.setVoiceCommandMode(mode);
+    }
+    const labels = {
+      hybrid: "Hibrido",
+      wake_word: 'Apenas "Misaka"',
+      direct_command: "Comandos diretos",
+    };
+    showToast(`Modo de escuta alterado para ${labels[mode] || mode}.`, "info");
+  });
+}
+
 // Settings toggles
 document.getElementById("speakSuffixToggle").addEventListener("change", (e) => {
   localStorage.setItem("misaka_speak_suffix", e.target.checked);
