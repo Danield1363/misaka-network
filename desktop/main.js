@@ -14,31 +14,54 @@ const fs = require("fs");
 const os = require("os");
 const { spawn } = require("child_process");
 
-// --- Safe logger (prevents EPIPE crash) ---
-function safeLog(...args) {
-  try { console.log(...args); } catch (_) {}
-}
-function safeWarn(...args) {
-  try { console.warn(...args); } catch (_) {}
-}
-function safeError(...args) {
-  try { console.error(...args); } catch (_) {}
+// --- File-based logger (never touches stdout/stderr — prevents EPIPE) ---
+let LOG_FILE = "";
+try {
+  const userData = app.getPath("userData");
+  LOG_FILE = path.join(userData, "misaka-desktop.log");
+} catch (_) {
+  LOG_FILE = path.join(__dirname, "misaka-desktop.log");
 }
 
-// --- EPIPE handling ---
+function writeLog(level, args) {
+  try {
+    const line = `[${new Date().toISOString()}] [${level}] ${args
+      .map((a) => {
+        if (a instanceof Error) return a.stack || a.message;
+        if (typeof a === "object") {
+          try { return JSON.stringify(a); } catch { return String(a); }
+        }
+        return String(a == null ? "" : a);
+      })
+      .join(" ")}\n`;
+    fs.appendFileSync(LOG_FILE, line, "utf8");
+  } catch (_) {}
+}
+
+function safeLog(...args) { writeLog("INFO", args); }
+function safeWarn(...args) { writeLog("WARN", args); }
+function safeError(...args) { writeLog("ERROR", args); }
+
+// --- Monkey-patch console so no direct console.* can EPIPE-crash ---
+console.log = (...args) => safeLog(...args);
+console.warn = (...args) => safeWarn(...args);
+console.error = (...args) => safeError(...args);
+
+// --- EPIPE handling (catches everything the monkey-patch misses) ---
 process.stdout?.on?.("error", (err) => {
   if (err && err.code === "EPIPE") return;
-  safeError("[stdout error]", err);
+  writeLog("ERROR", ["[stdout error]", err]);
 });
 process.stderr?.on?.("error", (err) => {
   if (err && err.code === "EPIPE") return;
+  writeLog("ERROR", ["[stderr error]", err]);
 });
 process.on("uncaughtException", (error) => {
   if (error && error.code === "EPIPE") return;
-  safeError("[Misaka Desktop] uncaughtException:", error);
+  writeLog("ERROR", ["[Misaka Desktop] uncaughtException:", error]);
 });
 process.on("unhandledRejection", (reason) => {
-  safeError("[Misaka Desktop] unhandledRejection:", reason);
+  writeLog("ERROR", ["[Misaka Desktop] unhandledRejection:", reason]);
 });
 
 let mainWindow;

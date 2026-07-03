@@ -314,8 +314,6 @@
 
       const state =
         error === "not-allowed" ? STATES.permission_needed : STATES.error;
-      this.updateState(state, message);
-      this.emitError(error, message);
 
       if (FATAL_ERRORS.has(error)) {
         this.enabled = false;
@@ -323,8 +321,10 @@
         this.starting = false;
         this.persistSettings();
         this.stopRecognitionOnly();
-        return;
       }
+
+      this.updateState(state, message);
+      this.emitError(error, message);
 
       if (this.enabled && this.settings.wake_auto_restart) {
         this.scheduleRestart();

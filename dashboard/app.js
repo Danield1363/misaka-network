@@ -1035,6 +1035,12 @@ function initVoiceWakeController() {
         btnWakeWord.style.color = active
           ? "var(--color-primary)"
           : "var(--color-muted)";
+        // Always sync button text with actual enabled state
+        if (voiceWakeController) {
+          btnWakeWord.textContent = voiceWakeController.enabled
+            ? "Desativar escuta"
+            : "Ativar escuta Misaka";
+        }
         if (
           state === "error" ||
           state === "permission_needed" ||

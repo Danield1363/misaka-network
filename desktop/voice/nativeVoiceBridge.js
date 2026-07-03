@@ -13,11 +13,18 @@ const { spawn } = require("child_process");
 const path = require("path");
 const fs = require("fs");
 
+// File-based logger — never touches stdout/stderr
 function safeLog(...args) {
-  try { console.log(...args); } catch (_) {}
+  try {
+    const line = `[${new Date().toISOString()}] [INFO] [NativeVoice] ${args.map(String).join(" ")}\n`;
+    fs.appendFileSync(path.join(__dirname, "..", "..", "misaka-desktop.log"), line, "utf8");
+  } catch (_) {}
 }
 function safeError(...args) {
-  try { console.error(...args); } catch (_) {}
+  try {
+    const line = `[${new Date().toISOString()}] [ERROR] [NativeVoice] ${args.map(String).join(" ")}\n`;
+    fs.appendFileSync(path.join(__dirname, "..", "..", "misaka-desktop.log"), line, "utf8");
+  } catch (_) {}
 }
 
 const PYTHON_DIR = path.join(__dirname, "python");
