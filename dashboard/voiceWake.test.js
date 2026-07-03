@@ -76,6 +76,24 @@ class FailingRecognition {
 }
 
 globalThis.SpeechRecognition = FailingRecognition;
+
+// Mock WebSocket to prevent daemon connection during test
+const prevWebSocket = globalThis.WebSocket;
+globalThis.WebSocket = function MockWebSocket() {
+  this.readyState = 0;
+  this.onopen = null;
+  this.onmessage = null;
+  this.onerror = null;
+  this.onclose = null;
+  setTimeout(() => {
+    if (this.onerror) this.onerror(new Event("error"));
+  }, 100);
+};
+globalThis.WebSocket.CONNECTING = 0;
+globalThis.WebSocket.OPEN = 1;
+globalThis.WebSocket.CLOSING = 2;
+globalThis.WebSocket.CLOSED = 3;
+
 const startFailureStorage = {
   values: new Map(),
   getItem(key) {
@@ -102,6 +120,12 @@ startFailureController.start().then((result) => {
     globalThis.SpeechRecognition = previousSpeechRecognition;
   } else {
     delete globalThis.SpeechRecognition;
+  }
+
+  if (prevWebSocket) {
+    globalThis.WebSocket = prevWebSocket;
+  } else {
+    delete globalThis.WebSocket;
   }
 
   runModeSelectionTests();

@@ -52,6 +52,91 @@ class NativeVoiceBridge {
     }
   }
 
+  diagnostics() {
+    const result = {
+      success: true,
+      python: { found: false, command: "", version: "" },
+      requirements: { file_exists: false, installed: false, missing: [] },
+      model: { exists: false, path: DEFAULT_MODEL_PATH },
+      daemon: { running: this.process !== null, websocket: `ws://127.0.0.1:${this.daemonPort || DEFAULT_DAEMON_PORT}` },
+      next_step: "",
+    };
+
+    // Check Python
+    try {
+      const pythonCmd = process.platform === "win32" ? "python" : "python3";
+      const { execSync } = require("child_process");
+      const version = execSync(`${pythonCmd} --version`, { encoding: "utf8" }).trim();
+      result.python = { found: true, command: pythonCmd, version };
+    } catch {
+      result.python = { found: false, command: "python", version: "" };
+    }
+
+    // Check requirements file
+    result.requirements.file_exists = fs.existsSync(path.join(PYTHON_DIR, "requirements.txt"));
+
+    // Check installed packages
+    if (result.python.found) {
+      try {
+        const { execSync } = require("child_process");
+        const pythonCmd = result.python.command;
+        for (const pkg of ["vosk", "sounddevice", "websockets"]) {
+          execSync(`${pythonCmd} -c "import ${pkg}"`, { stdio: "ignore" });
+        }
+        result.requirements.installed = true;
+      } catch {
+        result.requirements.installed = false;
+        result.requirements.missing = ["vosk", "sounddevice", "websockets"];
+      }
+    }
+
+    // Check model
+    result.model.exists = fs.existsSync(DEFAULT_MODEL_PATH) && fs.readdirSync(DEFAULT_MODEL_PATH).length > 0;
+
+    // Determine next step
+    if (!result.python.found) {
+      result.next_step = "Instale Python e marque a opcao Add Python to PATH.";
+    } else if (!result.requirements.installed) {
+      const pkgs = result.requirements.missing.join(", ");
+      result.next_step = `Rode: pip install -r desktop/voice/python/requirements.txt (faltando: ${pkgs})`;
+    } else if (!result.model.exists) {
+      result.next_step = "Baixe um modelo Vosk pt-BR e coloque em desktop/voice/models/pt.";
+    } else if (!result.daemon.running) {
+      result.next_step = "Daemon nao esta rodando. Clique em Iniciar Daemon.";
+    } else {
+      result.next_step = "Tudo pronto! O daemon esta rodando.";
+    }
+
+    return result;
+  }
+
+  openFolder(folderPath) {
+    const { shell } = require("electron");
+    const target = folderPath || DEFAULT_MODEL_PATH;
+    if (fs.existsSync(target)) {
+      shell.openPath(target);
+      return { success: true };
+    }
+    // Create the folder if it doesn't exist
+    try {
+      fs.mkdirSync(target, { recursive: true });
+      shell.openPath(target);
+      return { success: true, created: true };
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+  }
+
+  openDocs() {
+    const { shell } = require("electron");
+    const docsPath = path.join(__dirname, "..", "..", "docs", "NATIVE_VOICE_DAEMON.md");
+    if (fs.existsSync(docsPath)) {
+      shell.openPath(docsPath);
+      return { success: true };
+    }
+    return { success: false, error: "Documentacao nao encontrada." };
+  }
+
   // --- Daemon management ---
 
   startDaemon(modelPath, port) {

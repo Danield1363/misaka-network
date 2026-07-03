@@ -55,6 +55,8 @@ contextBridge.exposeInMainWorld("misakaDesktop", {
   // --- Native Voice ---
   nativeVoiceIsAvailable: () => invoke("native-voice:is-available"),
 
+  nativeVoiceDiagnostics: () => invoke("native-voice:diagnostics"),
+
   nativeVoiceStart: (modelPath) =>
     invoke("native-voice:start", typeof modelPath === "string" ? modelPath : undefined),
 
@@ -64,6 +66,11 @@ contextBridge.exposeInMainWorld("misakaDesktop", {
     invoke("native-voice:restart", typeof modelPath === "string" ? modelPath : undefined),
 
   nativeVoiceStatus: () => invoke("native-voice:status"),
+
+  nativeVoiceOpenFolder: (folderPath) =>
+    invoke("native-voice:open-folder", typeof folderPath === "string" ? folderPath : undefined),
+
+  nativeVoiceOpenDocs: () => invoke("native-voice:open-docs"),
 
   onNativeVoiceTranscript: (callback) => {
     if (typeof callback !== "function") return () => {};

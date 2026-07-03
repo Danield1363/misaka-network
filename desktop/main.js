@@ -671,6 +671,33 @@ function setupIPC() {
       return { state: "error", lastError: error.message, running: false };
     }
   });
+
+  ipcMain.handle("native-voice:diagnostics", () => {
+    try {
+      return ensureNativeVoiceBridge().diagnostics();
+    } catch (error) {
+      safeError("[Misaka Desktop] native voice diagnostics error:", error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle("native-voice:open-folder", (_event, folderPath) => {
+    try {
+      return ensureNativeVoiceBridge().openFolder(folderPath);
+    } catch (error) {
+      safeError("[Misaka Desktop] open folder error:", error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle("native-voice:open-docs", () => {
+    try {
+      return ensureNativeVoiceBridge().openDocs();
+    } catch (error) {
+      safeError("[Misaka Desktop] open docs error:", error);
+      return { success: false, error: error.message };
+    }
+  });
 }
 
 function setupPolling() {

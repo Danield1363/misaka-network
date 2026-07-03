@@ -284,6 +284,27 @@
       const isElectron = !!(root.misakaDesktop && root.misakaDesktop.isAvailable);
       this.debug(`start: mode=${this.voiceMode} electron=${isElectron}`);
 
+      // Run diagnostics in Electron
+      if (isElectron && root.misakaDesktop.nativeVoiceDiagnostics) {
+        this.updateState(STATES.checking, "Verificando configuracao de voz...");
+        try {
+          const diag = await root.misakaDesktop.nativeVoiceDiagnostics();
+          this.debug(`diagnostics: ${JSON.stringify(diag)}`);
+          if (diag && !diag.model?.exists) {
+            const msg = "Modelo Vosk nao encontrado. " + (diag.next_step || "Coloque o modelo em desktop/voice/models/pt.");
+            this.updateState(STATES.unavailable, msg);
+            return { success: false, mode: "unavailable", error: msg };
+          }
+          if (diag && !diag.requirements?.installed) {
+            const msg = "Dependencias de voz nao instaladas. " + (diag.next_step || "Rode: pip install -r desktop/voice/python/requirements.txt");
+            this.updateState(STATES.unavailable, msg);
+            return { success: false, mode: "unavailable", error: msg };
+          }
+        } catch (e) {
+          this.debug(`diagnostics failed: ${e.message}`);
+        }
+      }
+
       // Priority: daemon first (always), then Web Speech
       this.updateState(STATES.checking, "Conectando ao daemon de voz...");
       const daemonConnected = await this.connectDaemon();
@@ -298,8 +319,9 @@
 
       // If in Electron and daemon failed, don't try Web Speech
       if (isElectron) {
-        this.updateState(STATES.unavailable, "Modo nativo de voz nao disponivel. Configure o Misaka Voice Daemon.");
-        return { success: false, mode: "unavailable", error: "Modo nativo de voz nao disponivel. Configure o Misaka Voice Daemon." };
+        const msg = "Daemon de voz nao esta rodando. Abra o painel de diagnostico de voz para ver o proximo passo.";
+        this.updateState(STATES.unavailable, msg);
+        return { success: false, mode: "unavailable", error: msg };
       }
 
       // Web Speech only in browser
