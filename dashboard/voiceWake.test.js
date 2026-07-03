@@ -1,5 +1,8 @@
 const assert = require("assert");
-const { VoiceWakeController, extractCommandFromWakePhrase } = require("./voiceWake");
+const {
+  VoiceWakeController,
+  extractCommandFromWakePhrase,
+} = require("./voiceWake");
 
 const cases = [
   ["Misaka, abra o YouTube", "abra o YouTube"],
@@ -42,5 +45,42 @@ controller.processTranscript("Misaka", true);
 controller.processTranscript("abrir notepad", true);
 
 assert.deepStrictEqual(sentCommands, ["abra o YouTube", "abrir notepad"]);
+
+const previousSpeechRecognition = globalThis.SpeechRecognition;
+
+class FailingRecognition {
+  start() {
+    throw new Error("blocked");
+  }
+
+  stop() {}
+}
+
+globalThis.SpeechRecognition = FailingRecognition;
+const startFailureStorage = {
+  values: new Map(),
+  getItem(key) {
+    return this.values.has(key) ? this.values.get(key) : null;
+  },
+  setItem(key, value) {
+    this.values.set(key, value);
+  },
+};
+const startFailureController = new VoiceWakeController({
+  storage: startFailureStorage,
+  callbacks: {
+    sendVoiceCommand: () => Promise.resolve(),
+  },
+});
+
+assert.strictEqual(startFailureController.start(), false);
+assert.strictEqual(startFailureController.enabled, false);
+assert.strictEqual(startFailureController.state, "error");
+
+if (previousSpeechRecognition) {
+  globalThis.SpeechRecognition = previousSpeechRecognition;
+} else {
+  delete globalThis.SpeechRecognition;
+}
 
 console.log("voiceWake extraction tests passed");

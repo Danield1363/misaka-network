@@ -415,7 +415,7 @@
 
     getUnsupportedMessage() {
       if (root.misakaDesktop && root.misakaDesktop.isAvailable) {
-        return "Reconhecimento de voz não disponível neste Electron. Use Chrome/Edge por enquanto ou ative o futuro modo nativo de voz. Modo nativo de wake word ainda não configurado.";
+        return "Reconhecimento de voz não disponível neste Electron. Use Chrome/Edge por enquanto ou ative o futuro modo nativo de voz.\nModo nativo de wake word ainda não configurado.";
       }
       return "Reconhecimento de voz não disponível neste ambiente.";
     }
