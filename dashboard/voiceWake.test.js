@@ -8,6 +8,7 @@ const {
   isNativeDesktopSupported,
   isDirectVoiceCommand,
   classifyVoiceCommand,
+  probeNativeVoiceDaemon,
 } = require("./voiceWake");
 
 assert.strictEqual(
@@ -222,3 +223,76 @@ function runModeSelectionTests() {
 
   console.log("voiceWake extraction tests passed");
 }
+
+// --- Probe daemon tests ---
+
+async function runProbeTests() {
+  // Mock WebSocket that simulates a running daemon (connects immediately)
+  const prevWs = globalThis.WebSocket;
+  class MockDaemonWebSocket {
+    constructor(url) {
+      this.url = url;
+      this.readyState = 0;
+      this.onopen = null;
+      this.onmessage = null;
+      this.onerror = null;
+      this.onclose = null;
+      this._shouldFail = url && url.includes("fail");
+      setTimeout(() => {
+        if (this._shouldFail) {
+          if (this.onerror) this.onerror(new Event("error"));
+        } else {
+          this.readyState = 1;
+          if (this.onopen) this.onopen();
+        }
+      }, 10);
+    }
+    close() {}
+  }
+  MockDaemonWebSocket.CONNECTING = 0;
+  MockDaemonWebSocket.OPEN = 1;
+  MockDaemonWebSocket.CLOSING = 2;
+  MockDaemonWebSocket.CLOSED = 3;
+  globalThis.WebSocket = MockDaemonWebSocket;
+
+  // Probe that succeeds (daemon running)
+  const result1 = await probeNativeVoiceDaemon(2000);
+  assert.strictEqual(result1.success, true);
+  assert.strictEqual(result1.mode, "native_desktop");
+  assert.strictEqual(result1.url, "ws://127.0.0.1:8765");
+
+  // Restore original WebSocket for probe that fails
+  class FailingDaemonWebSocket {
+    constructor() {
+      this.readyState = 0;
+      this.onopen = null;
+      this.onerror = null;
+      this.onclose = null;
+      setTimeout(() => {
+        if (this.onerror) this.onerror(new Event("error"));
+      }, 10);
+    }
+    close() {}
+  }
+  FailingDaemonWebSocket.CONNECTING = 0;
+  FailingDaemonWebSocket.OPEN = 1;
+  FailingDaemonWebSocket.CLOSING = 2;
+  FailingDaemonWebSocket.CLOSED = 3;
+  globalThis.WebSocket = FailingDaemonWebSocket;
+
+  const result2 = await probeNativeVoiceDaemon(2000);
+  assert.strictEqual(result2.success, false);
+  assert.ok(result2.error);
+
+  // Restore
+  globalThis.WebSocket = prevWs;
+
+  console.log("probe daemon tests passed");
+}
+
+runProbeTests().then(() => {
+  console.log("all tests passed");
+}).catch((err) => {
+  console.error("probe tests failed:", err);
+  process.exit(1);
+});

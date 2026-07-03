@@ -191,6 +191,45 @@
     return "unavailable";
   }
 
+  async function probeNativeVoiceDaemon(timeoutMs) {
+    const timeout = timeoutMs || 1500;
+    return new Promise((resolve) => {
+      let finished = false;
+      let socket = null;
+
+      const finish = (result) => {
+        if (finished) return;
+        finished = true;
+        try {
+          if (socket && socket.readyState === root.WebSocket.OPEN) {
+            socket.close();
+          }
+        } catch (_) {}
+        resolve(result);
+      };
+
+      try {
+        socket = new root.WebSocket("ws://127.0.0.1:8765");
+
+        const timer = root.setTimeout(() => {
+          finish({ success: false, error: "Timeout ao conectar no daemon local." });
+        }, timeout);
+
+        socket.onopen = () => {
+          root.clearTimeout(timer);
+          finish({ success: true, url: "ws://127.0.0.1:8765", mode: "native_desktop" });
+        };
+
+        socket.onerror = () => {
+          root.clearTimeout(timer);
+          finish({ success: false, error: "Nao consegui conectar ao daemon local em ws://127.0.0.1:8765." });
+        };
+      } catch (error) {
+        finish({ success: false, error: error.message });
+      }
+    });
+  }
+
   class VoiceWakeController {
     constructor(options = {}) {
       this.elements = options.elements || {};
@@ -243,11 +282,20 @@
 
     // --- Initialization ---
 
-    init() {
+    async init() {
       this.loadSettings();
       this.voiceMode = chooseVoiceWakeMode();
 
       if (this.voiceMode === "unavailable") {
+        const probe = await probeNativeVoiceDaemon(1500);
+        if (probe.success) {
+          this.voiceMode = "native_desktop";
+          this.updateState(STATES.off);
+          if (this.settings.wake_start_on_launch || this.enabled) {
+            return await this.start();
+          }
+          return true;
+        }
         this.enabled = false;
         this.persistSettings();
         this.updateState(STATES.unavailable, this._getUnavailableMessage());
@@ -256,7 +304,7 @@
 
       this.updateState(STATES.off);
       if (this.settings.wake_start_on_launch || this.enabled) {
-        return this.start();
+        return await this.start();
       }
       return true;
     }
@@ -282,63 +330,62 @@
 
       this.voiceMode = chooseVoiceWakeMode();
       const isElectron = !!(root.misakaDesktop && root.misakaDesktop.isAvailable);
-      this.debug(`start: mode=${this.voiceMode} electron=${isElectron}`);
+      this.debug(`start: electron=${isElectron} mode=${this.voiceMode}`);
 
-      // Run diagnostics in Electron
-      if (isElectron && root.misakaDesktop.nativeVoiceDiagnostics) {
-        this.updateState(STATES.checking, "Verificando configuracao de voz...");
-        try {
-          const diag = await root.misakaDesktop.nativeVoiceDiagnostics();
-          this.debug(`diagnostics: ${JSON.stringify(diag)}`);
-          if (diag && !diag.model?.exists) {
-            const msg = "Modelo Vosk nao encontrado. " + (diag.next_step || "Coloque o modelo em desktop/voice/models/pt.");
-            this.updateState(STATES.unavailable, msg);
-            return { success: false, mode: "unavailable", error: msg };
-          }
-          if (diag && !diag.requirements?.installed) {
-            const msg = "Dependencias de voz nao instaladas. " + (diag.next_step || "Rode: pip install -r desktop/voice/python/requirements.txt");
-            this.updateState(STATES.unavailable, msg);
-            return { success: false, mode: "unavailable", error: msg };
-          }
-        } catch (e) {
-          this.debug(`diagnostics failed: ${e.message}`);
+      // 1. Probe daemon WebSocket first (works in both Electron and browser)
+      this.updateState(STATES.checking, "Verificando daemon de voz...");
+      const probe = await probeNativeVoiceDaemon(1500);
+      if (probe.success) {
+        const connected = await this.connectDaemon();
+        if (connected) {
+          this.voiceMode = "daemon_websocket";
+          this.enabled = true;
+          this.active = true;
+          this.persistSettings();
+          this.updateState(STATES.listening_for_wake, "Daemon de voz conectado. Escuta nativa ativa.");
+          return { success: true, mode: "native_desktop", message: "Daemon de voz conectado." };
         }
       }
 
-      // Priority: daemon first (always), then Web Speech
-      this.updateState(STATES.checking, "Conectando ao daemon de voz...");
-      const daemonConnected = await this.connectDaemon();
-      if (daemonConnected) {
-        this.voiceMode = "daemon_websocket";
-        this.enabled = true;
-        this.active = true;
-        this.persistSettings();
-        this.updateState(STATES.listening_for_wake, "Wake: conectado ao daemon");
-        return { success: true, mode: "daemon", message: "Escuta ativada via daemon local." };
+      // 2. In Electron: try starting daemon via bridge
+      if (isElectron && root.misakaDesktop.nativeVoiceStart) {
+        this.updateState(STATES.checking, "Iniciando daemon de voz...");
+        try {
+          const startResult = await root.misakaDesktop.nativeVoiceStart();
+          if (startResult?.success || startResult?.running) {
+            const retryProbe = await probeNativeVoiceDaemon(1500);
+            if (retryProbe.success) {
+              const connected = await this.connectDaemon();
+              if (connected) {
+                this.voiceMode = "daemon_websocket";
+                this.enabled = true;
+                this.active = true;
+                this.persistSettings();
+                this.updateState(STATES.listening_for_wake, "Daemon de voz iniciado e conectado.");
+                return { success: true, mode: "native_desktop", message: "Daemon de voz iniciado e conectado." };
+              }
+            }
+          }
+        } catch (e) {
+          this.debug(`daemon start via bridge failed: ${e.message}`);
+        }
       }
 
-      // If in Electron and daemon failed, don't try Web Speech
-      if (isElectron) {
-        const msg = "Daemon de voz nao esta rodando. Abra o painel de diagnostico de voz para ver o proximo passo.";
-        this.updateState(STATES.unavailable, msg);
-        return { success: false, mode: "unavailable", error: msg };
+      // 3. In Electron: try native desktop IPC bridge
+      if (isElectron && this.voiceMode === "native_desktop") {
+        const nativeResult = await this.startNativeDesktop();
+        if (nativeResult) {
+          return { success: true, mode: "native_desktop", message: "Escuta ativada via modo nativo." };
+        }
       }
 
-      // Web Speech only in browser
+      // 4. Web Speech (browser only)
       if (this.voiceMode === "web_speech") {
         const webResult = this.startWebSpeech();
         if (webResult) {
           return { success: true, mode: "web_speech", message: "Escuta ativada via Web Speech." };
         }
         return { success: false, mode: "web_speech", error: this.lastError || "Web Speech nao iniciou." };
-      }
-
-      if (this.voiceMode === "native_desktop") {
-        const nativeResult = await this.startNativeDesktop();
-        if (nativeResult) {
-          return { success: true, mode: "native_desktop", message: "Escuta ativada via modo nativo." };
-        }
-        return { success: false, mode: "native_desktop", error: this.lastError || "Modo nativo nao iniciou." };
       }
 
       this.updateState(STATES.unavailable, this._getUnavailableMessage());
@@ -899,7 +946,13 @@
           this.sendVoiceCommand(command);
         }
       } else if (data.type === "status") {
-        this.debug(`daemon status: ${data.state}`);
+        const daemonState = data.state || "unknown";
+        if (daemonState === "listening" || daemonState === "ready") {
+          if (this.active) {
+            this.updateState(STATES.listening_for_wake, data.message || "Daemon de voz ouvindo.");
+          }
+        }
+        this.debug(`daemon status: ${daemonState}`);
       } else if (data.type === "error") {
         this.lastError = data.message || data.error || "Erro no daemon";
         this.updateState(STATES.error, this.lastError);
@@ -1004,6 +1057,7 @@
     chooseVoiceWakeMode,
     isWebSpeechSupported,
     isNativeDesktopSupported,
+    probeNativeVoiceDaemon,
     DEFAULT_WAKE_PHRASES,
     STATES,
   };
@@ -1019,6 +1073,7 @@
       chooseVoiceWakeMode,
       isWebSpeechSupported,
       isNativeDesktopSupported,
+      probeNativeVoiceDaemon,
       DEFAULT_WAKE_PHRASES,
       STATES,
     };

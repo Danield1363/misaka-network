@@ -12,6 +12,7 @@
 const { spawn } = require("child_process");
 const path = require("path");
 const fs = require("fs");
+const net = require("net");
 
 // File-based logger — never touches stdout/stderr
 function safeLog(...args) {
@@ -41,6 +42,26 @@ class NativeVoiceBridge {
     this.lastError = "";
   }
 
+  _probeDaemon(port) {
+    const targetPort = port || this.daemonPort || DEFAULT_DAEMON_PORT;
+    return new Promise((resolve) => {
+      const socket = new net.Socket();
+      const timeout = setTimeout(() => {
+        socket.destroy();
+        resolve({ running: false });
+      }, 1000);
+      socket.connect(targetPort, "127.0.0.1", () => {
+        clearTimeout(timeout);
+        socket.destroy();
+        resolve({ running: true, port: targetPort });
+      });
+      socket.on("error", () => {
+        clearTimeout(timeout);
+        resolve({ running: false });
+      });
+    });
+  }
+
   isAvailable() {
     try {
       const pythonCmd = process.platform === "win32" ? "python" : "python3";
@@ -52,7 +73,7 @@ class NativeVoiceBridge {
     }
   }
 
-  diagnostics() {
+  async diagnostics() {
     const result = {
       success: true,
       python: { found: false, command: "", version: "" },
@@ -93,6 +114,16 @@ class NativeVoiceBridge {
     // Check model
     result.model.exists = fs.existsSync(DEFAULT_MODEL_PATH) && fs.readdirSync(DEFAULT_MODEL_PATH).length > 0;
 
+    // Check daemon (child process or external)
+    if (!result.daemon.running) {
+      const probe = await this._probeDaemon();
+      if (probe.running) {
+        result.daemon.running = true;
+        result.daemon.mode = "manual_or_external";
+        result.daemon.websocket = `ws://127.0.0.1:${probe.port}`;
+      }
+    }
+
     // Determine next step
     if (!result.python.found) {
       result.next_step = "Instale Python e marque a opcao Add Python to PATH.";
@@ -102,7 +133,7 @@ class NativeVoiceBridge {
     } else if (!result.model.exists) {
       result.next_step = "Baixe um modelo Vosk pt-BR e coloque em desktop/voice/models/pt.";
     } else if (!result.daemon.running) {
-      result.next_step = "Daemon nao esta rodando. Clique em Iniciar Daemon.";
+      result.next_step = "Daemon nao esta rodando. Execute: python desktop/voice/python/misaka_voice_daemon.py";
     } else {
       result.next_step = "Tudo pronto! O daemon esta rodando.";
     }
@@ -139,9 +170,22 @@ class NativeVoiceBridge {
 
   // --- Daemon management ---
 
-  startDaemon(modelPath, port) {
+  async startDaemon(modelPath, port) {
     if (this.process) {
       return { success: true, message: "Daemon ja esta rodando.", port: this.daemonPort || DEFAULT_DAEMON_PORT };
+    }
+
+    // Check if port is already in use by an external daemon
+    const probe = await this._probeDaemon(port);
+    if (probe.running) {
+      safeLog(`Port ${probe.port} already in use by external daemon`);
+      return {
+        success: true,
+        running: true,
+        mode: "already_running",
+        message: "Daemon de voz ja esta rodando.",
+        port: probe.port,
+      };
     }
 
     if (!fs.existsSync(DAEMON_SCRIPT)) {
@@ -239,12 +283,22 @@ class NativeVoiceBridge {
     return this.restartDaemon(modelPath);
   }
 
-  status() {
-    return {
-      state: this.state,
-      lastError: this.lastError,
-      running: this.process !== null,
-    };
+  async status() {
+    const childRunning = this.process !== null;
+    if (childRunning) {
+      return { state: this.state, lastError: this.lastError, running: true, mode: "child" };
+    }
+    const probe = await this._probeDaemon();
+    if (probe.running) {
+      return {
+        state: "running",
+        lastError: "",
+        running: true,
+        mode: "manual_or_external",
+        websocket: `ws://127.0.0.1:${probe.port}`,
+      };
+    }
+    return { state: this.state, lastError: this.lastError, running: false };
   }
 
   _handleEvent(event) {
