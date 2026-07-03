@@ -30,10 +30,15 @@ class CommandRouter:
     ) -> dict[str, Any] | None:
         desktop_cmd = detect_desktop_command(message)
         if desktop_cmd.matched:
-            logger.info(f"Desktop command: {desktop_cmd.command} -> {desktop_cmd.app}")
+            logger.info(
+                "[CommandRouter] matched open_app %s (confidence=%.2f)",
+                desktop_cmd.app,
+                desktop_cmd.confidence,
+            )
             return {
                 "type": "command_executed",
                 "intent": desktop_cmd.intent,
+                "command": desktop_cmd.command,
                 "tool_name": "desktop.open_app",
                 "success": True,
                 "data": {"app": desktop_cmd.app},
@@ -43,26 +48,44 @@ class CommandRouter:
                     "target": desktop_cmd.target_device,
                     "app": desktop_cmd.app,
                 },
-                "metadata": {"response_mode": "action_short"},
+                "metadata": {
+                    "response_mode": "action_short",
+                    "ui_effect": "none",
+                },
             }
 
         web_result = web_action_engine.process(message)
         if web_result:
             client_action = self._build_web_client_action(web_result)
+            web_command = (
+                "search_web"
+                if client_action.get("type") == "search_web"
+                else "open_url"
+            )
+            logger.info(
+                "[CommandRouter] matched %s -> %s",
+                web_result.action_type,
+                web_result.url,
+            )
             return {
                 "type": "command_executed",
                 "intent": "web_action",
+                "command": web_command,
                 "tool_name": "desktop.open_url",
                 "success": True,
                 "data": {"url": web_result.url},
                 "response_message": web_result.response_message,
                 "client_action": client_action,
-                "metadata": {"response_mode": "action_short"},
+                "metadata": {
+                    "response_mode": "action_short",
+                    "ui_effect": "none",
+                },
             }
 
         intent = detect_intent(message)
 
         if intent is None:
+            logger.info("[CommandRouter] no command matched for: %s", message[:80])
             return None
 
         logger.info(

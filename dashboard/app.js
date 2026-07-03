@@ -1,5 +1,3 @@
-const API_BASE = MISAKA_CONFIG.API_BASE_URL;
-
 // DOM Elements
 const chatMessages = document.getElementById("chatMessages");
 const messageInput = document.getElementById("messageInput");
@@ -59,7 +57,7 @@ let compactMode = localStorage.getItem("misaka_compact_mode") === "true";
 let desktopNotificationsEnabled =
   localStorage.getItem("misaka_desktop_notifications") === "true";
 
-const APP_DISPLAY_NAMES = {
+const APP_LABELS = {
   notepad: "Bloco de Notas",
   explorer: "Explorador de Arquivos",
   calculator: "Calculadora",
@@ -67,7 +65,99 @@ const APP_DISPLAY_NAMES = {
   discord: "Discord",
   chrome: "Chrome",
   edge: "Edge",
+  browser: "Navegador",
+  cmd: "Prompt de Comando",
+  powershell: "PowerShell",
 };
+
+let desktopBridgeState = {
+  status: "Checking",
+  detail: "",
+  bridge: null,
+};
+
+function isSafeHttpUrl(url) {
+  if (typeof url !== "string") return false;
+  const lower = url.trim().toLowerCase();
+  if (
+    lower.startsWith("javascript:") ||
+    lower.startsWith("data:") ||
+    lower.startsWith("file:") ||
+    lower.startsWith("about:")
+  ) {
+    return false;
+  }
+  return lower.startsWith("http://") || lower.startsWith("https://");
+}
+
+async function detectDesktopBridge() {
+  const bridge = window.misakaDesktop;
+  if (!bridge || bridge.isAvailable !== true) {
+    desktopBridgeState = {
+      status: "Offline",
+      detail: "Bridge Electron nao detectado (modo navegador).",
+      bridge: null,
+    };
+    console.log("[Misaka] Desktop Bridge: Offline");
+    return desktopBridgeState;
+  }
+
+  if (
+    typeof bridge.openApp !== "function" ||
+    typeof bridge.openUrl !== "function"
+  ) {
+    desktopBridgeState = {
+      status: "Error",
+      detail: "Bridge incompleto: openApp/openUrl ausentes.",
+      bridge,
+    };
+    console.log("[Misaka] Desktop Bridge: Error (incomplete)");
+    return desktopBridgeState;
+  }
+
+  if (typeof bridge.getSystemStatus === "function") {
+    try {
+      const status = await bridge.getSystemStatus();
+      if (status && status.success === false) {
+        desktopBridgeState = {
+          status: "Error",
+          detail: status.error || "Falha ao consultar status do sistema.",
+          bridge,
+        };
+        console.log("[Misaka] Desktop Bridge: Error (system status)");
+        return desktopBridgeState;
+      }
+    } catch (error) {
+      desktopBridgeState = {
+        status: "Error",
+        detail: error.message,
+        bridge,
+      };
+      console.log("[Misaka] Desktop Bridge: Error", error.message);
+      return desktopBridgeState;
+    }
+  }
+
+  desktopBridgeState = {
+    status: "Online",
+    detail: "Bridge Electron ativo.",
+    bridge,
+  };
+  console.log("[Misaka] Desktop Bridge: Online");
+  return desktopBridgeState;
+}
+
+function updateDesktopBridgeUI() {
+  const desktopModule = document.getElementById("desktopModule");
+  if (!desktopModule) return;
+
+  const label = desktopBridgeState.status;
+  desktopModule.textContent = label;
+  desktopModule.className = `module-status ${
+    label === "Online" ? "online" : label === "Error" ? "error" : ""
+  }`;
+  desktopModule.title = desktopBridgeState.detail || label;
+}
 
 // ==================== Toast System ====================
 function showToast(message, type = "info", duration = 4000) {
@@ -269,7 +359,7 @@ function showProviderStatus(provider, model, fallbackActive) {
 
 async function loadStatus() {
   try {
-    const response = await fetch(`${API_BASE}/overview`);
+    const response = await fetch(`${MISAKA_CONFIG.API_BASE_URL}/overview`);
     const data = await response.json();
 
     currentProvider = data.llm_provider;
@@ -289,11 +379,14 @@ async function loadStatus() {
       : "Disabled";
     document.getElementById("notificationsStatus").textContent =
       data.notifications_enabled ? "Enabled" : "Disabled";
-    document.getElementById("desktopStatus").textContent = data.desktop_enabled
-      ? "Online"
-      : "Offline";
-    document.getElementById("androidStatus").textContent =
-      data.android_bridge_enabled ? "Online" : "Offline";
+
+    const androidModule = document.getElementById("androidModule");
+    if (androidModule) {
+      androidModule.textContent = data.android_bridge_enabled
+        ? "Online"
+        : "Offline";
+      androidModule.className = `module-status ${data.android_bridge_enabled ? "online" : ""}`;
+    }
 
     document.getElementById("memoryModule").textContent = data.memory_enabled
       ? "Active"
@@ -306,10 +399,9 @@ async function loadStatus() {
       `module-status ${data.calendar_enabled ? "online" : ""}`;
     document.getElementById("llmStatus").textContent =
       data.llm_provider === "mock" ? "Mock" : "Active";
-    document.getElementById("bridgeStatus").textContent =
-      data.android_bridge_enabled ? "Online" : "Offline";
-    document.getElementById("bridgeStatus").className =
-      `module-status ${data.android_bridge_enabled ? "online" : ""}`;
+
+    await detectDesktopBridge();
+    updateDesktopBridgeUI();
 
     // Fallback status
     const fallbackItem = document.getElementById("fallbackStatusItem");
@@ -380,93 +472,238 @@ function cleanAssistantText(text) {
 
 // ==================== Client Action Handler ====================
 async function handleClientAction(action) {
-  if (!action || !action.type) return "";
+  if (!action || !action.type) {
+    return { success: false, type: "", message: "", error: "Acao invalida.", action };
+  }
 
-  const isDesktop = window.misakaDesktop && window.misakaDesktop.isAvailable;
-  const appLabel = APP_DISPLAY_NAMES[action.app] || action.app || "aplicativo";
+  const bridgeInfo = await detectDesktopBridge();
+  const bridge = bridgeInfo.bridge;
+  const appLabel = APP_LABELS[action.app] || action.app || "aplicativo";
 
   if (action.type === "open_url") {
-    if (isDesktop && window.misakaDesktop.openUrl) {
-      const result = await window.misakaDesktop.openUrl(action.url);
-      if (result && result.success) return "Página aberta, diz Misaka Misaka.";
-      const reason = (result && result.error) || "erro desconhecido";
-      return `Não consegui abrir a página. Motivo: ${reason}, diz Misaka Misaka.`;
+    const url = action.url;
+    if (!isSafeHttpUrl(url)) {
+      return {
+        success: false,
+        type: "open_url",
+        message: "",
+        error: "URL invalida. Use apenas http:// ou https://.",
+        action,
+      };
     }
+
+    if (bridge && typeof bridge.openUrl === "function") {
+      const result = await bridge.openUrl(url);
+      console.log("[Misaka] client_action open_url result:", result);
+      if (result && result.success) {
+        return {
+          success: true,
+          type: "open_url",
+          message: "Pagina aberta, diz Misaka Misaka.",
+          error: "",
+          action,
+        };
+      }
+      return {
+        success: false,
+        type: "open_url",
+        message: "",
+        error: (result && result.error) || "erro desconhecido",
+        action,
+      };
+    }
+
     try {
-      window.open(action.url, "_blank");
-      return "Página aberta, diz Misaka Misaka.";
-    } catch (e) {
-      return "Não consegui abrir a página. Motivo: popup bloqueado, diz Misaka Misaka.";
+      const opened = window.open(url, "_blank", "noopener,noreferrer");
+      if (opened) {
+        return {
+          success: true,
+          type: "open_url",
+          message: "Pagina aberta, diz Misaka Misaka.",
+          error: "",
+          action,
+        };
+      }
+      return {
+        success: false,
+        type: "open_url",
+        message: "",
+        error: "popup bloqueado",
+        action,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        type: "open_url",
+        message: "",
+        error: error.message,
+        action,
+      };
     }
   }
 
   if (action.type === "open_app") {
-    if (isDesktop && window.misakaDesktop.openApp) {
-      const result = await window.misakaDesktop.openApp(action.app);
+    if (bridge && typeof bridge.openApp === "function") {
+      const result = await bridge.openApp(action.app);
+      console.log("[Misaka] client_action open_app result:", result);
       if (result && result.success) {
-        return `${appLabel} aberto no seu computador, diz Misaka Misaka.`;
+        return {
+          success: true,
+          type: "open_app",
+          message: `${appLabel} aberto no seu computador, diz Misaka Misaka.`,
+          error: "",
+          action,
+        };
       }
-      const reason = (result && result.error) || "app não encontrado";
-      return `Não consegui abrir ${appLabel}. Motivo: ${reason}, diz Misaka Misaka.`;
+      return {
+        success: false,
+        type: "open_app",
+        message: "",
+        error: (result && result.error) || "app nao encontrado",
+        action,
+      };
     }
-    return `Não consegui abrir ${appLabel}. Motivo: use o app desktop da Misaka para abrir aplicativos locais, diz Misaka Misaka.`;
+    return {
+      success: false,
+      type: "open_app",
+      message: "",
+      error: "Para abrir aplicativos locais, use o app desktop da Misaka.",
+      action,
+    };
   }
 
   if (action.type === "search_web") {
-    if (isDesktop && window.misakaDesktop.searchWeb) {
-      const result = await window.misakaDesktop.searchWeb(
-        action.query,
-        action.provider,
-      );
-      if (result && result.success)
-        return "Pesquisa aberta, diz Misaka Misaka.";
-      const reason = (result && result.error) || "erro desconhecido";
-      return `Não consegui pesquisar. Motivo: ${reason}, diz Misaka Misaka.`;
-    }
     const provider = action.provider || "google";
+    if (bridge && typeof bridge.searchWeb === "function") {
+      const result = await bridge.searchWeb(action.query, provider);
+      console.log("[Misaka] client_action search_web result:", result);
+      if (result && result.success) {
+        return {
+          success: true,
+          type: "search_web",
+          message: "Pesquisa aberta, diz Misaka Misaka.",
+          error: "",
+          action,
+        };
+      }
+      return {
+        success: false,
+        type: "search_web",
+        message: "",
+        error: (result && result.error) || "erro desconhecido",
+        action,
+      };
+    }
+
     const urls = {
       google: `https://www.google.com/search?q=${encodeURIComponent(action.query)}`,
       youtube: `https://www.youtube.com/results?search_query=${encodeURIComponent(action.query)}`,
       github: `https://github.com/search?q=${encodeURIComponent(action.query)}&type=repositories`,
       reddit: `https://www.reddit.com/search/?q=${encodeURIComponent(action.query)}`,
+      modrinth: `https://modrinth.com/mods?q=${encodeURIComponent(action.query)}`,
+      curseforge: `https://www.curseforge.com/minecraft/search?search=${encodeURIComponent(action.query)}`,
     };
+    const url = action.url || urls[provider] || urls.google;
+    if (!isSafeHttpUrl(url)) {
+      return {
+        success: false,
+        type: "search_web",
+        message: "",
+        error: "URL de pesquisa invalida.",
+        action,
+      };
+    }
     try {
-      window.open(action.url || urls[provider] || urls.google, "_blank");
-      return "Pesquisa aberta, diz Misaka Misaka.";
-    } catch (e) {
-      return "Não consegui pesquisar. Motivo: popup bloqueado, diz Misaka Misaka.";
+      const opened = window.open(url, "_blank", "noopener,noreferrer");
+      if (opened) {
+        return {
+          success: true,
+          type: "search_web",
+          message: "Pesquisa aberta, diz Misaka Misaka.",
+          error: "",
+          action,
+        };
+      }
+      return {
+        success: false,
+        type: "search_web",
+        message: "",
+        error: "popup bloqueado",
+        action,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        type: "search_web",
+        message: "",
+        error: error.message,
+        action,
+      };
     }
   }
 
   if (action.type === "get_system_status") {
-    if (isDesktop && window.misakaDesktop.getSystemStatus) {
-      const status = await window.misakaDesktop.getSystemStatus();
-      return `PC: ${status.platform} | RAM: ${Math.round(status.memory?.heapUsed / 1024 / 1024 || 0)}MB`;
+    if (bridge && typeof bridge.getSystemStatus === "function") {
+      const status = await bridge.getSystemStatus();
+      return {
+        success: true,
+        type: "get_system_status",
+        message: `PC: ${status.platform} | RAM: ${Math.round(status.memory?.heapUsed / 1024 / 1024 || 0)}MB`,
+        error: "",
+        action,
+      };
     }
-    return "Status do PC indisponível fora do app desktop, diz Misaka Misaka.";
+    return {
+      success: false,
+      type: "get_system_status",
+      message: "",
+      error: "Status do PC indisponivel fora do app desktop.",
+      action,
+    };
   }
-
-  if (action.type === "vibrate")
-    return "Comando de vibração enviado ao celular, diz Misaka Misaka.";
 
   if (action.type === "show_toast") {
     showToast(action.message || "Alerta do Misaka", "info");
-    return "";
+    return { success: true, type: "show_toast", message: "", error: "", action };
   }
 
-  return "";
+  return { success: false, type: action.type, message: "", error: "Acao nao suportada.", action };
+}
+
+function formatActionResult(result) {
+  if (!result) return "";
+  if (result.success) return result.message;
+  if (result.type === "open_app") {
+    const appLabel =
+      APP_LABELS[result.action?.app] || result.action?.app || "aplicativo";
+    return `Nao consegui abrir ${appLabel}. Motivo: ${result.error}, diz Misaka Misaka.`;
+  }
+  if (result.type === "open_url") {
+    return `Nao consegui abrir a pagina. Motivo: ${result.error}, diz Misaka Misaka.`;
+  }
+  if (result.type === "search_web") {
+    return `Nao consegui pesquisar. Motivo: ${result.error}, diz Misaka Misaka.`;
+  }
+  if (result.error) {
+    return `Nao consegui executar a acao. Motivo: ${result.error}, diz Misaka Misaka.`;
+  }
+  return result.message || "";
 }
 // ==================== Chat Functions ====================
 async function sendMessage(messageOverride = null, options = {}) {
   const fromVoice = options.source === "voice";
+  const silentUserMessage = options.silentUserMessage === true;
+  const skipInputClear = options.skipInputClear === true;
   const message =
     typeof messageOverride === "string"
       ? messageOverride.trim()
       : messageInput.value.trim();
-  if (!message) return;
+  if (!message) return { success: false, error: "empty_message" };
 
-  addMessage(message, "user");
-  if (!fromVoice) {
+  if (!silentUserMessage) {
+    addMessage(message, "user");
+  }
+  if (!fromVoice && !skipInputClear) {
     messageInput.value = "";
     messageInput.style.height = "auto";
   }
@@ -476,8 +713,10 @@ async function sendMessage(messageOverride = null, options = {}) {
   typingIndicator.classList.add("active");
   btnSend.disabled = true;
 
+  let actionOutcome = { success: true };
+
   try {
-    const response = await fetch(`${API_BASE}/chat`, {
+    const response = await fetch(`${MISAKA_CONFIG.API_BASE_URL}/chat`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -490,19 +729,15 @@ async function sendMessage(messageOverride = null, options = {}) {
     conversationId = data.conversation_id;
 
     const clientAction = data.metadata && data.metadata.client_action;
-    let assistantResponse = data.response;
+    const assistantResponse = data.response;
+
     if (clientAction) {
-      assistantResponse = await handleClientAction(clientAction);
+      console.log("[Misaka] client_action received:", clientAction);
     }
 
     setCoreState("speaking");
     if (assistantResponse) {
       addMessage(assistantResponse, "assistant");
-    }
-
-    // Auto speak - FIXED: always speak if enabled, not just first time
-    if (voiceEnabled && assistantResponse && (autoSpeak || fromVoice)) {
-      speak(assistantResponse);
     }
 
     // Show command-specific UI effects
@@ -544,10 +779,45 @@ async function sendMessage(messageOverride = null, options = {}) {
       }
     }
 
+    let actionResult = null;
+    if (clientAction) {
+      try {
+        actionResult = await handleClientAction(clientAction);
+        actionOutcome = actionResult;
+      } catch (actionError) {
+        actionResult = {
+          success: false,
+          type: clientAction.type,
+          message: "",
+          error: actionError.message,
+          action: clientAction,
+        };
+        actionOutcome = actionResult;
+      }
+      const actionMessage = formatActionResult(actionResult);
+      if (actionMessage) {
+        addMessage(actionMessage, "assistant");
+      }
+    }
+
+    const speakText =
+      (actionResult && (actionResult.message || formatActionResult(actionResult))) ||
+      assistantResponse;
+    if (voiceEnabled && speakText && (autoSpeak || fromVoice)) {
+      speak(speakText);
+    }
+
     setTimeout(() => setCoreState(null), 3000);
+    return {
+      success: actionOutcome.success !== false,
+      response: assistantResponse,
+      action: actionOutcome,
+      metadata: data.metadata || {},
+    };
   } catch (error) {
     addMessage("Erro ao conectar com o servidor.", "system");
     setCoreState(null);
+    return { success: false, error: error.message };
   } finally {
     typingIndicator.classList.remove("active");
     btnSend.disabled = false;
@@ -575,7 +845,7 @@ function copyToClipboard(text) {
 // ==================== Alert Functions ====================
 async function loadAlerts() {
   try {
-    const response = await fetch(`${API_BASE}/notifications/alerts`);
+    const response = await fetch(`${MISAKA_CONFIG.API_BASE_URL}/notifications/alerts`);
     const data = await response.json();
 
     const alertsContainer = document.getElementById("alertsContainer");
@@ -620,7 +890,7 @@ async function loadAlerts() {
           ackBtn.onclick = async (e) => {
             e.stopPropagation();
             try {
-              await fetch(`${API_BASE}/notifications/alerts/${alert.id}/ack`, {
+              await fetch(`${MISAKA_CONFIG.API_BASE_URL}/notifications/alerts/${alert.id}/ack`, {
                 method: "POST",
               });
               loadAlerts();
@@ -663,7 +933,7 @@ async function loadAlerts() {
 
 async function ackAllAlerts() {
   try {
-    const response = await fetch(`${API_BASE}/notifications/alerts/ack-all`, {
+    const response = await fetch(`${MISAKA_CONFIG.API_BASE_URL}/notifications/alerts/ack-all`, {
       method: "POST",
     });
     const data = await response.json();
@@ -688,7 +958,7 @@ function closeSettings() {
 
 async function loadSettingsInfo() {
   try {
-    const response = await fetch(`${API_BASE}/llm/status`);
+    const response = await fetch(`${MISAKA_CONFIG.API_BASE_URL}/llm/status`);
     const data = await response.json();
     const info = document.getElementById("settingsLLMInfo");
     info.innerHTML = `
@@ -714,7 +984,7 @@ async function loadSettingsInfo() {
 
   // Android info
   try {
-    const response = await fetch(`${API_BASE}/android/status`);
+    const response = await fetch(`${MISAKA_CONFIG.API_BASE_URL}/android/status`);
     const data = await response.json();
     const androidInfo = document.getElementById("settingsAndroidInfo");
     if (data.enabled) {
@@ -745,7 +1015,7 @@ function initVoiceWakeController() {
     },
     callbacks: {
       sendVoiceCommand: (command) => sendMessage(command, { source: "voice" }),
-      onStatusChange: (state, label) => {
+      onStateChange: (state, label) => {
         const active = [
           "listening_for_wake",
           "wake_detected",
@@ -770,10 +1040,10 @@ function initVoiceWakeController() {
   voiceWakeController.init();
 
   if (window.misakaDesktop && window.misakaDesktop.onWakeWordSetEnabled) {
-    window.misakaDesktop.onWakeWordSetEnabled(({ enabled }) => {
+    window.misakaDesktop.onWakeWordSetEnabled((enabled) => {
       const started = voiceWakeController.setEnabled(Boolean(enabled));
       if (enabled && !started) {
-        showToast("Não consegui ativar a escuta Misaka.", "warning");
+        showToast("Nao consegui ativar a escuta Misaka.", "warning");
       }
     });
   }
@@ -897,10 +1167,16 @@ btnWakeWord.addEventListener("click", () => {
   const enabled = !voiceWakeController.enabled;
   const started = voiceWakeController.setEnabled(enabled);
   if (enabled && started) {
-    showToast(`Wake word ativado.\nDiga "Misaka" para acionar.`, "info");
-  }
-  if (!enabled) {
+    showToast('Wake word ativado.\nDiga "Misaka" para acionar.', "info");
+  } else if (!enabled) {
     showToast("Wake word desativado.", "info");
+  } else if (enabled && !started) {
+    showToast(
+      voiceWakeController.lastError ||
+        voiceWakeController.elements.error?.textContent ||
+        "Nao consegui ativar a escuta Misaka.",
+      "warning",
+    );
   }
 });
 // Settings toggles
@@ -983,6 +1259,7 @@ if (compactMode) document.body.classList.add("compact-mode");
 if (hudMode) document.body.classList.add("hud-mode");
 
 loadStatus();
+detectDesktopBridge().then(updateDesktopBridgeUI);
 loadAlerts();
 initVoiceControls();
 updateVoiceButton();

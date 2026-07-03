@@ -1,8 +1,62 @@
-# Quality Gate — Misaka v0.3 Genesis
+# Quality Gate — Misaka v0.3.5
 
 Use this checklist before any merge or release.
 
+**Last verified:** 2026-07-02 (hotfix desktop bridge + operational commands)
+
 ## Syntax Validation
+
+### Comando: `node --check dashboard/app.js`
+- Resultado esperado: Sem SyntaxError.
+- Resultado obtido: OK
+- Status: **PASS**
+
+### Comando: `node --check dashboard/voiceWake.js`
+- Resultado esperado: Sem SyntaxError.
+- Resultado obtido: OK
+- Status: **PASS**
+
+### Comando: `node --check dashboard/voiceWake.test.js`
+- Resultado esperado: Sem SyntaxError.
+- Resultado obtido: OK
+- Status: **PASS**
+
+### Comando: `node --check dashboard/config.js`
+- Resultado esperado: Sem SyntaxError.
+- Resultado obtido: OK
+- Status: **PASS**
+
+### Comando: `node --check desktop/main.js`
+- Resultado esperado: Sem SyntaxError.
+- Resultado obtido: OK
+- Status: **PASS**
+
+### Comando: `node --check desktop/preload.js`
+- Resultado esperado: Sem SyntaxError.
+- Resultado obtido: OK
+- Status: **PASS**
+
+### Comando: `node dashboard/voiceWake.test.js`
+- Resultado esperado: wake phrase extraction + two-step flow + start failure.
+- Resultado obtido: `voiceWake extraction tests passed`
+- Status: **PASS**
+
+### Comando: `python -m pytest`
+- Resultado esperado: All tests pass.
+- Resultado obtido: **308 passed** in 7.01s
+- Status: **PASS**
+
+### Comando: `POST /api/chat` com `"abrir discord"` (backend local)
+- Resultado esperado: `agent=command_router`, `client_action.open_app=discord`, resposta curta.
+- Resultado obtido: PASS — resposta `"Vou abrir o Discord no seu computador..."`, sem tutorial.
+- Status: **PASS**
+
+### Limitação conhecida: API remota (Northflank)
+- A URL `https://p01--misaka-network--nf5wq7twf8xg.code.run/api` ainda retorna resposta LLM/mock para `"abrir discord"`.
+- Dashboard/Electron agora defaultam para `http://127.0.0.1:8000/api` em modo local/file/Electron.
+- Deploy do backend atualizado é necessário para produção remota.
+
+## Syntax Validation (tabela resumida)
 
 | Command | Expected | Status |
 |---------|----------|--------|
@@ -19,7 +73,7 @@ Use this checklist before any merge or release.
 | `node --check desktop/preload.js` | OK | PASS |
 | `node --check desktop/control/*.js` | OK | PASS |
 
-## Backend (305 tests)
+## Backend (308 tests)
 
 | Test | Command | Expected | Status |
 |------|---------|----------|--------|
@@ -40,7 +94,7 @@ Use this checklist before any merge or release.
 | Settings | `test_settings` | get, update, reset | PASS |
 | Devices | `test_devices` | register, heartbeat, list | PASS |
 | Desktop package | `test_desktop_package` | extraResources includes dashboard | PASS |
-| Full suite | `python -m pytest` | 305 passed | PASS |
+| Full suite | `python -m pytest` | 308 passed | PASS |
 | Voice wake extraction | `node dashboard/voiceWake.test.js` | wake phrase + two-step command flow | PASS |
 
 ## Operational Actions

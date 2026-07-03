@@ -2,7 +2,17 @@ const assert = require("assert");
 const {
   VoiceWakeController,
   extractCommandFromWakePhrase,
+  normalizeVoiceText,
 } = require("./voiceWake");
+
+assert.strictEqual(
+  normalizeVoiceText("Misaka, ABRA o YouTube!"),
+  "misaka abra o youtube",
+);
+assert.strictEqual(
+  normalizeVoiceText("Ei Misaka, abrir notepad"),
+  "ei misaka abrir notepad",
+);
 
 const cases = [
   ["Misaka, abra o YouTube", "abra o YouTube"],
@@ -11,8 +21,10 @@ const cases = [
     "Ok Misaka, abrir notepad no meu computador",
     "abrir notepad no meu computador",
   ],
+  ["Acorda Misaka, limpe os alertas", "limpe os alertas"],
   ["Misaka", ""],
   ["alô teste", null],
+  ["minha misaka não funciona", null],
 ];
 
 for (const [input, expected] of cases) {
@@ -40,9 +52,11 @@ const controller = new VoiceWakeController({
   },
 });
 
-controller.processTranscript("Misaka, abra o YouTube", true);
-controller.processTranscript("Misaka", true);
-controller.processTranscript("abrir notepad", true);
+controller.processTranscript("Misaka, abra o YouTube");
+controller.processTranscript("Misaka");
+assert.strictEqual(controller.state, "listening_for_command");
+controller.processTranscript("abrir notepad");
+controller.processTranscript("alô teste");
 
 assert.deepStrictEqual(sentCommands, ["abra o YouTube", "abrir notepad"]);
 

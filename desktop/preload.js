@@ -1,37 +1,54 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
+function invoke(channel, payload) {
+  return ipcRenderer.invoke(channel, payload);
+}
+
 contextBridge.exposeInMainWorld("misakaDesktop", {
   isAvailable: true,
 
-  getConfig: () => ipcRenderer.invoke("get-config"),
+  openUrl: (url) => {
+    if (typeof url !== "string") {
+      return Promise.resolve({ success: false, error: "URL invalida." });
+    }
+    return invoke("desktop:open-url", url);
+  },
 
-  sendNotification: (title, body) =>
-    ipcRenderer.invoke("send-notification", { title, body }),
-
-  openApp: (appName) => ipcRenderer.invoke("open-app", { appName }),
-
-  openUrl: (url) => ipcRenderer.invoke("open-url", { url }),
+  openApp: (appName) => {
+    if (typeof appName !== "string") {
+      return Promise.resolve({ success: false, error: "Nome do app invalido." });
+    }
+    return invoke("desktop:open-app", appName);
+  },
 
   searchWeb: (query, provider) =>
-    ipcRenderer.invoke("search-web", { query, provider }),
+    invoke("desktop:search-web", { query, provider }),
 
-  getSystemStatus: () => ipcRenderer.invoke("get-system-status"),
+  showNotification: (title, body) =>
+    invoke("desktop:show-notification", { title, body }),
+
+  getSystemStatus: () => invoke("desktop:system-status"),
+
+  setHudMode: (enabled) =>
+    invoke("desktop:set-hud-mode", Boolean(enabled)),
 
   setAlwaysOnTop: (enabled) =>
-    ipcRenderer.invoke("set-always-on-top", { enabled }),
+    invoke("desktop:set-always-on-top", Boolean(enabled)),
 
-  setHudMode: (enabled) => ipcRenderer.invoke("set-hud-mode", { enabled }),
+  focusWindow: () => invoke("desktop:focus-window"),
 
-  focusWindow: () => ipcRenderer.invoke("focus-window"),
-
-  toggleCompact: (enabled) => ipcRenderer.invoke("toggle-compact", { enabled }),
-
-  requestAction: (action) => ipcRenderer.invoke("request-action", action),
+  getConfig: () => invoke("get-config"),
 
   onWakeWordSetEnabled: (callback) => {
-    ipcRenderer.removeAllListeners("wake-word:set-enabled");
-    ipcRenderer.on("wake-word:set-enabled", (event, payload) =>
-      callback(payload),
-    );
+    if (typeof callback !== "function") return () => {};
+    const listener = (_event, payload) => {
+      const enabled =
+        typeof payload === "object" && payload !== null
+          ? Boolean(payload.enabled)
+          : Boolean(payload);
+      callback(enabled);
+    };
+    ipcRenderer.on("wake-word:set-enabled", listener);
+    return () => ipcRenderer.removeListener("wake-word:set-enabled", listener);
   },
 });

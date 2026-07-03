@@ -81,10 +81,22 @@ def test_edge():
     assert cmd.app == "edge"
 
 
-def test_terminal():
-    cmd = detect_desktop_command("abra o terminal")
+def test_cmd():
+    cmd = detect_desktop_command("abra cmd")
     assert cmd.matched is True
-    assert cmd.app == "terminal"
+    assert cmd.app == "cmd"
+
+
+def test_powershell():
+    cmd = detect_desktop_command("abra powershell")
+    assert cmd.matched is True
+    assert cmd.app == "powershell"
+
+
+def test_abrir_discord_without_article():
+    cmd = detect_desktop_command("abrir discord")
+    assert cmd.matched is True
+    assert cmd.app == "discord"
 
 
 def test_conversation_not_matched():

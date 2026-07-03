@@ -83,12 +83,20 @@ class BrainEngine:
                 )
 
                 command_intent = result.get("intent", "")
+                command_name = result.get("command") or command_intent
+                if command_intent in ("desktop", "web_action"):
+                    metadata_intent = command_intent
+                else:
+                    metadata_intent = "command"
+                    command_name = command_intent
                 response_metadata = {
-                    "intent": "command",
-                    "command": command_intent,
+                    "intent": metadata_intent,
+                    "command": command_name,
                     "tool_name": result.get("tool_name"),
                     "action_taken": result.get("tool_name"),
-                    "ui_effect": UI_EFFECT_MAP.get(command_intent, ""),
+                    "ui_effect": UI_EFFECT_MAP.get(
+                        command_name, UI_EFFECT_MAP.get(command_intent, "")
+                    ),
                     "version": self.settings.VERSION,
                     "memory_enabled": memory_enabled,
                     "memories_used": len(memories),
@@ -127,6 +135,7 @@ class BrainEngine:
                     },
                 )
 
+        logger.info("[CommandRouter] no command matched, falling back to LLM for: %s", message[:80])
         intent = self.planner.detect_intent(message)
         logger.info(f"Detected intent: {intent}")
 
@@ -150,12 +159,20 @@ class BrainEngine:
 
                 execution_time = time.time() - start_time
                 command_intent = result.get("intent", "")
+                command_name = result.get("command") or command_intent
+                if command_intent in ("desktop", "web_action"):
+                    metadata_intent = command_intent
+                else:
+                    metadata_intent = "command"
+                    command_name = command_intent
                 response_metadata = {
-                    "intent": "command",
-                    "command": command_intent,
+                    "intent": metadata_intent,
+                    "command": command_name,
                     "tool_name": result.get("tool_name"),
                     "action_taken": result.get("tool_name"),
-                    "ui_effect": UI_EFFECT_MAP.get(command_intent, ""),
+                    "ui_effect": UI_EFFECT_MAP.get(
+                        command_name, UI_EFFECT_MAP.get(command_intent, "")
+                    ),
                     "version": self.settings.VERSION,
                     "memory_enabled": memory_enabled,
                     "memories_used": len(memories),

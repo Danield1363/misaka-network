@@ -34,8 +34,7 @@ const DASHBOARD_DIR = getDashboardDir();
 
 const CONFIG = {
   API_BASE_URL:
-    process.env.MISAKA_API_BASE_URL ||
-    "https://p01--misaka-network--nf5wq7twf8xg.code.run/api",
+    process.env.MISAKA_API_BASE_URL || "http://127.0.0.1:8000/api",
   DASHBOARD_URL: process.env.MISAKA_DASHBOARD_URL || "",
   START_MINIMIZED: process.env.START_MINIMIZED === "true",
   ALWAYS_ON_TOP_DEFAULT: process.env.ALWAYS_ON_TOP_DEFAULT === "true",
@@ -160,6 +159,9 @@ function createWindow() {
     return;
   }
 
+  const preloadPath = path.join(__dirname, "preload.js");
+  console.log("[Misaka Desktop] preload path:", preloadPath);
+
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
@@ -168,7 +170,8 @@ function createWindow() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
-      preload: path.join(__dirname, "preload.js"),
+      sandbox: false,
+      preload: preloadPath,
     },
     alwaysOnTop: CONFIG.ALWAYS_ON_TOP_DEFAULT,
     transparent: CONFIG.TRANSPARENT_MODE_DEFAULT,
@@ -182,8 +185,11 @@ function createWindow() {
     mainWindow.webContents
       .executeJavaScript(
         `
+            window.__MISAKA_API_BASE_URL__ = '${CONFIG.API_BASE_URL}';
             if (typeof MISAKA_CONFIG !== 'undefined') {
-                MISAKA_CONFIG.API_BASE_URL = '${CONFIG.API_BASE_URL}';
+                Object.defineProperty(MISAKA_CONFIG, 'API_BASE_URL', {
+                    get: function() { return window.__MISAKA_API_BASE_URL__; }
+                });
             }
         `,
       )
@@ -356,7 +362,7 @@ const WINDOWS_APP_LAUNCHERS = {
     ];
     const found = paths.find((p) => fs.existsSync(p));
     if (!found)
-      throw new Error("Discord nao encontrado nos caminhos permitidos.");
+      throw new Error("Discord nao encontrado nos caminhos conhecidos.");
     spawn(found, ["--processStart", "Discord.exe"], {
       detached: true,
       stdio: "ignore",
@@ -366,9 +372,15 @@ const WINDOWS_APP_LAUNCHERS = {
     spawn("notepad.exe", [], { detached: true, stdio: "ignore" }).unref(),
   calculator: () =>
     spawn("calc.exe", [], { detached: true, stdio: "ignore" }).unref(),
+  cmd: () =>
+    spawn("cmd.exe", [], { detached: true, stdio: "ignore" }).unref(),
+  powershell: () =>
+    spawn("powershell.exe", [], { detached: true, stdio: "ignore" }).unref(),
 };
 
 function launchApp(appName) {
+  console.log("[Misaka Desktop] openApp requested:", appName);
+
   if (!appName || typeof appName !== "string") {
     return { success: false, error: "Nome do app obrigatorio." };
   }
@@ -394,49 +406,83 @@ function launchApp(appName) {
 
   try {
     launcher();
+    console.log("[Misaka Desktop] openApp success:", normalizedApp);
     return { success: true, app: normalizedApp, method: "allowlist" };
   } catch (e) {
+    console.log("[Misaka Desktop] openApp failed:", normalizedApp, e.message);
     return {
       success: false,
       app: normalizedApp,
-      error: `Falha ao executar: ${e.message}`,
+      error: e.message,
     };
+  }
+}
+
+function isSafeUrl(url) {
+  if (typeof url !== "string") return false;
+  const lower = url.trim().toLowerCase();
+  if (
+    lower.startsWith("javascript:") ||
+    lower.startsWith("data:") ||
+    lower.startsWith("file:") ||
+    lower.startsWith("about:")
+  ) {
+    return false;
+  }
+  return lower.startsWith("http://") || lower.startsWith("https://");
+}
+
+async function openExternalUrl(url) {
+  console.log("[Misaka Desktop] openUrl requested:", url);
+  if (!isSafeUrl(url)) {
+    return {
+      success: false,
+      error: "URL invalida. Use apenas http:// ou https://.",
+    };
+  }
+  try {
+    await shell.openExternal(url);
+    console.log("[Misaka Desktop] openUrl success:", url);
+    return { success: true, url };
+  } catch (e) {
+    console.log("[Misaka Desktop] openUrl failed:", url, e.message);
+    return { success: false, url, error: e.message };
   }
 }
 function setupIPC() {
   ipcMain.handle("get-config", () => CONFIG);
 
-  ipcMain.handle("send-notification", (event, { title, body }) => {
+  ipcMain.handle("desktop:show-notification", async (_event, { title, body }) => {
     if (Notification.isSupported()) {
       const notification = new Notification({ title, body });
       notification.show();
       notification.on("click", () => mainWindow.show());
+      return { success: true };
     }
+    return { success: false, error: "Notificacoes nao suportadas." };
   });
 
-  ipcMain.handle("open-app", (event, { appName }) => {
-    return launchApp(appName);
+  ipcMain.handle("desktop:open-app", async (_event, appName) => {
+    const name =
+      typeof appName === "string"
+        ? appName
+        : appName && typeof appName.appName === "string"
+          ? appName.appName
+          : "";
+    return launchApp(name);
   });
 
-  ipcMain.handle("open-url", async (event, { url }) => {
-    if (
-      typeof url === "string" &&
-      (url.startsWith("http://") || url.startsWith("https://"))
-    ) {
-      try {
-        await shell.openExternal(url);
-        return { success: true, url };
-      } catch (e) {
-        return { success: false, url, error: e.message };
-      }
-    }
-    return {
-      success: false,
-      error: "Invalid URL.\nMust start with http:// or https://",
-    };
+  ipcMain.handle("desktop:open-url", async (_event, url) => {
+    const target =
+      typeof url === "string" ? url : url && typeof url.url === "string" ? url.url : "";
+    return openExternalUrl(target);
   });
 
-  ipcMain.handle("search-web", async (event, { query, provider }) => {
+  ipcMain.handle("desktop:search-web", async (_event, payload) => {
+    const query =
+      payload && typeof payload === "object" ? payload.query : payload;
+    const provider =
+      payload && typeof payload === "object" ? payload.provider : "google";
     if (!query || typeof query !== "string") {
       return { success: false, error: "Query is required" };
     }
@@ -446,23 +492,17 @@ function setupIPC() {
       youtube: `https://www.youtube.com/results?search_query=${encoded}`,
       github: `https://github.com/search?q=${encoded}&type=repositories`,
       reddit: `https://www.reddit.com/search/?q=${encoded}`,
+      modrinth: `https://modrinth.com/mods?q=${encoded}`,
+      curseforge: `https://www.curseforge.com/minecraft/search?search=${encoded}`,
     };
     const url = urls[provider] || urls.google;
-    try {
-      await shell.openExternal(url);
-      return { success: true, url, provider: provider || "google" };
-    } catch (e) {
-      return {
-        success: false,
-        url,
-        provider: provider || "google",
-        error: e.message,
-      };
-    }
+    const result = await openExternalUrl(url);
+    return { ...result, provider: provider || "google", query: query.trim() };
   });
 
-  ipcMain.handle("get-system-status", () => {
+  ipcMain.handle("desktop:system-status", async () => {
     return {
+      success: true,
       platform: process.platform,
       hostname: os.hostname(),
       arch: process.arch,
@@ -472,43 +512,57 @@ function setupIPC() {
     };
   });
 
-  ipcMain.handle("set-always-on-top", (event, { enabled }) => {
-    mainWindow.setAlwaysOnTop(enabled);
-    return { success: true, alwaysOnTop: enabled };
+  ipcMain.handle("desktop:set-always-on-top", async (_event, enabled) => {
+    mainWindow.setAlwaysOnTop(Boolean(enabled));
+    return { success: true, alwaysOnTop: Boolean(enabled) };
   });
 
-  ipcMain.handle("set-hud-mode", (event, { enabled }) => {
+  ipcMain.handle("desktop:set-hud-mode", async (_event, enabled) => {
+    const flag = Boolean(enabled);
     mainWindow.webContents
       .executeJavaScript(
         `
-            document.body.classList.toggle('hud-mode', ${enabled});
-            localStorage.setItem('misaka_hud_mode', ${enabled});
+            document.body.classList.toggle('hud-mode', ${flag});
+            localStorage.setItem('misaka_hud_mode', ${flag});
         `,
       )
       .catch(() => {});
     return { success: true };
   });
 
-  ipcMain.handle("focus-window", () => {
+  ipcMain.handle("desktop:focus-window", async () => {
     mainWindow.show();
     mainWindow.focus();
     return { success: true };
   });
 
-  ipcMain.handle("toggle-compact", (event, { enabled }) => {
-    mainWindow.webContents
-      .executeJavaScript(
-        `
-            document.body.classList.toggle('compact-mode', ${enabled});
-            localStorage.setItem('misaka_compact_mode', ${enabled});
-        `,
-      )
-      .catch(() => {});
-    return { success: true };
-  });
-
-  ipcMain.handle("request-action", (event, action) => {
-    return { received: true, action };
+  // Backward-compatible aliases
+  ipcMain.handle("open-app", (_event, payload) =>
+    launchApp(typeof payload === "object" ? payload.appName : payload),
+  );
+  ipcMain.handle("open-url", async (_event, payload) =>
+    openExternalUrl(typeof payload === "object" ? payload.url : payload),
+  );
+  ipcMain.handle("search-web", async (_event, payload) => {
+    const query =
+      payload && typeof payload === "object" ? payload.query : payload;
+    const provider =
+      payload && typeof payload === "object" ? payload.provider : "google";
+    if (!query || typeof query !== "string") {
+      return { success: false, error: "Query is required" };
+    }
+    const encoded = encodeURIComponent(query.trim());
+    const urls = {
+      google: `https://www.google.com/search?q=${encoded}`,
+      youtube: `https://www.youtube.com/results?search_query=${encoded}`,
+      github: `https://github.com/search?q=${encoded}&type=repositories`,
+      reddit: `https://www.reddit.com/search/?q=${encoded}`,
+      modrinth: `https://modrinth.com/mods?q=${encoded}`,
+      curseforge: `https://www.curseforge.com/minecraft/search?search=${encoded}`,
+    };
+    const url = urls[provider] || urls.google;
+    const result = await openExternalUrl(url);
+    return { ...result, provider: provider || "google", query: query.trim() };
   });
 }
 
