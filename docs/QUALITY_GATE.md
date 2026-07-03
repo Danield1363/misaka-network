@@ -2,7 +2,7 @@
 
 Use this checklist before any merge or release.
 
-**Last verified:** 2026-07-02 (hotfix desktop bridge + operational commands)
+**Last verified:** 2026-07-02 (v0.3.5 finalized — desktop bridge, app launching, voice wake, URL fix)
 
 ## Syntax Validation
 

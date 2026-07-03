@@ -3,7 +3,7 @@ from urllib.parse import quote_plus
 
 GOOGLE_SEARCH = "https://www.google.com/search?q={query}"
 YOUTUBE_SEARCH = "https://www.youtube.com/results?search_query={query}"
-YOUTUBE_CHANNEL_SEARCH = "https://www.youtube.com/results?search_query={query}+canal"
+YOUTUBE_CHANNEL_SEARCH = "https://www.youtube.com/results?search_query={query}"
 YOUTUBE_VIDEO_SEARCH = "https://www.youtube.com/results?search_query={query}+video"
 GITHUB_SEARCH = "https://github.com/search?q={query}&type=repositories"
 REDDIT_SEARCH = "https://www.reddit.com/search/?q={query}"
