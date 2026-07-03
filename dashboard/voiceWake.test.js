@@ -94,7 +94,7 @@ const startFailureController = new VoiceWakeController({
 
 // start() is now async — test it with .then()
 startFailureController.start().then((result) => {
-  assert.strictEqual(result, false);
+  assert.strictEqual(result.success, false);
   assert.strictEqual(startFailureController.enabled, false);
   assert.strictEqual(startFailureController.state, "error");
 

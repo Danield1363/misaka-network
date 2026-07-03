@@ -276,16 +276,15 @@
     // --- Start / Stop ---
 
     async start() {
-      if (this.active || this.starting) return true;
-
-      this.voiceMode = chooseVoiceWakeMode();
-      this.debug(`start: mode=${this.voiceMode}`);
-
-      if (this.voiceMode === "web_speech") {
-        return this.startWebSpeech();
+      if (this.active || this.starting) {
+        return { success: true, mode: this.voiceMode, message: "Escuta ja ativa." };
       }
 
-      // Try daemon WebSocket if Web Speech not available
+      this.voiceMode = chooseVoiceWakeMode();
+      const isElectron = !!(root.misakaDesktop && root.misakaDesktop.isAvailable);
+      this.debug(`start: mode=${this.voiceMode} electron=${isElectron}`);
+
+      // Priority: daemon first (always), then Web Speech
       this.updateState(STATES.checking, "Conectando ao daemon de voz...");
       const daemonConnected = await this.connectDaemon();
       if (daemonConnected) {
@@ -294,15 +293,34 @@
         this.active = true;
         this.persistSettings();
         this.updateState(STATES.listening_for_wake, "Wake: conectado ao daemon");
-        return true;
+        return { success: true, mode: "daemon", message: "Escuta ativada via daemon local." };
+      }
+
+      // If in Electron and daemon failed, don't try Web Speech
+      if (isElectron) {
+        this.updateState(STATES.unavailable, "Modo nativo de voz nao disponivel. Configure o Misaka Voice Daemon.");
+        return { success: false, mode: "unavailable", error: "Modo nativo de voz nao disponivel. Configure o Misaka Voice Daemon." };
+      }
+
+      // Web Speech only in browser
+      if (this.voiceMode === "web_speech") {
+        const webResult = this.startWebSpeech();
+        if (webResult) {
+          return { success: true, mode: "web_speech", message: "Escuta ativada via Web Speech." };
+        }
+        return { success: false, mode: "web_speech", error: this.lastError || "Web Speech nao iniciou." };
       }
 
       if (this.voiceMode === "native_desktop") {
-        return await this.startNativeDesktop();
+        const nativeResult = await this.startNativeDesktop();
+        if (nativeResult) {
+          return { success: true, mode: "native_desktop", message: "Escuta ativada via modo nativo." };
+        }
+        return { success: false, mode: "native_desktop", error: this.lastError || "Modo nativo nao iniciou." };
       }
 
       this.updateState(STATES.unavailable, this._getUnavailableMessage());
-      return false;
+      return { success: false, mode: "unavailable", error: this._getUnavailableMessage() };
     }
 
     stop() {
@@ -345,7 +363,7 @@
         return await this.start();
       }
       this.stop();
-      return true;
+      return { success: true, mode: "off", message: "Escuta desativada." };
     }
 
     // --- Web Speech Mode ---
@@ -435,20 +453,15 @@
       const state =
         error === "not-allowed" ? STATES.permission_needed : STATES.error;
 
-      if (FATAL_ERRORS.has(error)) {
-        this.enabled = false;
-        this.active = false;
-        this.starting = false;
-        this.persistSettings();
-        this.stopRecognitionOnly();
-      }
+      // Fatal errors: disable completely, no auto-restart
+      this.enabled = false;
+      this.active = false;
+      this.starting = false;
+      this.persistSettings();
+      this.stopRecognitionOnly();
 
       this.updateState(state, message);
       this.emitError(error, message);
-
-      if (this.enabled && this.settings.wake_auto_restart) {
-        this.scheduleRestart();
-      }
     }
 
     handleEnd() {

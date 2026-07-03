@@ -57,6 +57,17 @@ let compactMode = localStorage.getItem("misaka_compact_mode") === "true";
 let desktopNotificationsEnabled =
   localStorage.getItem("misaka_desktop_notifications") === "true";
 
+// Toast debounce for voice errors
+let lastVoiceErrorToast = "";
+let lastVoiceErrorAt = 0;
+function showVoiceErrorOnce(message) {
+  const now = Date.now();
+  if (message === lastVoiceErrorToast && now - lastVoiceErrorAt < 5000) return;
+  lastVoiceErrorToast = message;
+  lastVoiceErrorAt = now;
+  showToast(message, "error");
+}
+
 const APP_LABELS = {
   notepad: "Bloco de Notas",
   explorer: "Explorador de Arquivos",
@@ -1197,6 +1208,25 @@ document
   .getElementById("btnRefreshAlerts")
   .addEventListener("click", loadAlerts);
 
+// Wake UI helpers
+function updateWakeUI(state, message) {
+  const statusEl = document.getElementById("wakeStatus");
+  const errorEl = document.getElementById("wakeError");
+  if (statusEl) {
+    statusEl.textContent = message || `Wake: ${state}`;
+    statusEl.dataset.state = state;
+  }
+  if (errorEl) {
+    errorEl.textContent = (state === "error" || state === "unavailable") ? (message || "") : "";
+  }
+}
+
+function updateWakeButton(enabled) {
+  if (!btnWakeWord) return;
+  btnWakeWord.textContent = enabled ? "Desativar escuta" : "Ativar escuta Misaka";
+  btnWakeWord.dataset.enabled = String(enabled);
+}
+
 // Wake word
 btnWakeWord.addEventListener("click", async () => {
   console.log("[Misaka Wake] button clicked");
@@ -1208,30 +1238,41 @@ btnWakeWord.addEventListener("click", async () => {
 
   if (!voiceWakeController) {
     console.error("[Misaka Wake] voiceWakeController still null after init attempt");
-    showToast("Voice Wake nao disponivel. Verifique se voiceWake.js carregou.", "error");
+    showVoiceErrorOnce("Voice Wake nao disponivel. Verifique se voiceWake.js carregou.");
     return;
   }
 
-  const enabled = !voiceWakeController.enabled;
-  console.log("[Misaka Wake] toggling to:", enabled, "mode:", voiceWakeController.voiceMode);
+  const enabling = !voiceWakeController.enabled;
+
+  // If disabling, just stop
+  if (!enabling) {
+    await voiceWakeController.setEnabled(false);
+    showToast("Escuta desativada.", "info");
+    return;
+  }
+
+  // Enabling: show checking state first, then result
+  updateWakeUI("checking", "Verificando modo de escuta...");
 
   try {
-    const started = await voiceWakeController.setEnabled(enabled);
-    console.log("[Misaka Wake] setEnabled result:", started);
-    if (enabled && started) {
-      showToast('Wake word ativado.\nDiga "Misaka" para acionar.', "info");
-    } else if (!enabled) {
-      showToast("Wake word desativado.", "info");
-    } else if (enabled && !started) {
-      const errorMsg =
-        voiceWakeController.lastError ||
-        "Nao consegui ativar a escuta Misaka.";
-      console.error("[Misaka Wake] start failed:", errorMsg);
-      showToast(errorMsg, "warning");
+    const result = await voiceWakeController.setEnabled(true);
+    console.log("[Misaka Wake] setEnabled result:", result);
+
+    if (result && result.success) {
+      updateWakeButton(true);
+      updateWakeUI("listening_for_wake", result.message || "Escuta ativa.");
+      showToast(`Escuta ativada usando ${result.mode}.`, "success");
+    } else {
+      updateWakeButton(false);
+      const errorMsg = result?.error || voiceWakeController.lastError || "Nao foi possivel ativar a escuta.";
+      updateWakeUI("error", errorMsg);
+      showVoiceErrorOnce(errorMsg);
     }
   } catch (err) {
     console.error("[Misaka Wake] toggle failed:", err);
-    showToast(`Erro ao ativar escuta: ${err.message}`, "error");
+    updateWakeButton(false);
+    updateWakeUI("error", err.message || "Erro ao ativar escuta.");
+    showVoiceErrorOnce(`Erro ao ativar escuta: ${err.message}`);
   }
 });
 
