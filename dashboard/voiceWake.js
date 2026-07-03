@@ -170,16 +170,17 @@
 
     // --- Start / Stop ---
 
-    start() {
+    async start() {
       if (this.active || this.starting) return true;
 
       this.voiceMode = chooseVoiceWakeMode();
+      this.debug(`start: mode=${this.voiceMode}`);
 
       if (this.voiceMode === "web_speech") {
         return this.startWebSpeech();
       }
       if (this.voiceMode === "native_desktop") {
-        return this.startNativeDesktop();
+        return await this.startNativeDesktop();
       }
 
       this.updateState(STATES.unavailable, this._getUnavailableMessage());
@@ -205,7 +206,7 @@
       this.updateState(STATES.off);
     }
 
-    restart() {
+    async restart() {
       if (this.voiceMode === "web_speech") {
         this.stopRecognitionOnly();
       } else if (this.voiceMode === "native_desktop") {
@@ -214,11 +215,15 @@
       this.active = false;
       this.starting = false;
       if (!this.enabled) return false;
-      return this.start();
+      return await this.start();
     }
 
-    setEnabled(enabled) {
-      if (enabled) return this.start();
+    async setEnabled(enabled) {
+      this.debug(`setEnabled(${enabled})`);
+      if (enabled) {
+        this.updateState(STATES.checking, "Verificando reconhecimento de voz...");
+        return await this.start();
+      }
       this.stop();
       return true;
     }
@@ -341,7 +346,7 @@
 
     // --- Native Desktop Mode ---
 
-    startNativeDesktop() {
+    async startNativeDesktop() {
       const bridge = root.misakaDesktop;
       if (
         !bridge ||
@@ -404,42 +409,39 @@
         cleanupError,
       ];
 
-      bridge
-        .nativeVoiceStart()
-        .then((result) => {
-          if (result && result.success) {
-            this.enabled = true;
-            this.active = true;
-            this.starting = false;
-            this.persistSettings();
-            this.updateState(
-              STATES.listening_for_wake,
-              "Wake: usando modo nativo",
-            );
-          } else {
-            this.enabled = false;
-            this.active = false;
-            this.starting = false;
-            this.persistSettings();
-            const msg =
-              (result && result.error) || "Falha ao iniciar voz nativa";
-            this.lastError = msg;
-            this.updateState(STATES.error, msg);
-            this.emitError("native_start", msg);
-          }
-        })
-        .catch((err) => {
-          this.enabled = false;
-          this.active = false;
+      try {
+        const result = await bridge.nativeVoiceStart();
+        if (result && result.success) {
+          this.enabled = true;
+          this.active = true;
           this.starting = false;
           this.persistSettings();
-          const msg = `Erro ao iniciar voz nativa: ${err.message}`;
-          this.lastError = msg;
-          this.updateState(STATES.error, msg);
-          this.emitError("native_start", msg);
-        });
-
-      return true;
+          this.updateState(
+            STATES.listening_for_wake,
+            "Wake: usando modo nativo",
+          );
+          return true;
+        }
+        this.enabled = false;
+        this.active = false;
+        this.starting = false;
+        this.persistSettings();
+        const msg = (result && result.error) || "Falha ao iniciar voz nativa";
+        this.lastError = msg;
+        this.updateState(STATES.error, msg);
+        this.emitError("native_start", msg);
+        return false;
+      } catch (err) {
+        this.enabled = false;
+        this.active = false;
+        this.starting = false;
+        this.persistSettings();
+        const msg = `Erro ao iniciar voz nativa: ${err.message}`;
+        this.lastError = msg;
+        this.updateState(STATES.error, msg);
+        this.emitError("native_start", msg);
+        return false;
+      }
     }
 
     stopNativeDesktop() {

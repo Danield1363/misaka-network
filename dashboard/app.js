@@ -1003,6 +1003,13 @@ async function loadSettingsInfo() {
 
 // ==================== Wake Word ====================
 function initVoiceWakeController() {
+  console.log("[Misaka Wake] initVoiceWakeController()");
+
+  if (typeof VoiceWakeController === "undefined") {
+    console.error("[Misaka Wake] VoiceWakeController not loaded from voiceWake.js");
+    return;
+  }
+
   voiceWakeController = new VoiceWakeController({
     elements: {
       button: btnWakeWord,
@@ -1016,6 +1023,7 @@ function initVoiceWakeController() {
     callbacks: {
       sendVoiceCommand: (command) => sendMessage(command, { source: "voice" }),
       onStateChange: (state, label) => {
+        console.log("[Misaka Wake] state:", state, label);
         const active = [
           "listening_for_wake",
           "wake_detected",
@@ -1037,13 +1045,21 @@ function initVoiceWakeController() {
       },
     },
   });
-  voiceWakeController.init();
+
+  const initResult = voiceWakeController.init();
+  console.log("[Misaka Wake] init result:", initResult, "mode:", voiceWakeController.voiceMode);
 
   if (window.misakaDesktop && window.misakaDesktop.onWakeWordSetEnabled) {
-    window.misakaDesktop.onWakeWordSetEnabled((enabled) => {
-      const started = voiceWakeController.setEnabled(Boolean(enabled));
-      if (enabled && !started) {
-        showToast("Nao consegui ativar a escuta Misaka.", "warning");
+    window.misakaDesktop.onWakeWordSetEnabled(async (enabled) => {
+      console.log("[Misaka Wake] onWakeWordSetEnabled:", enabled);
+      try {
+        const started = await voiceWakeController.setEnabled(Boolean(enabled));
+        if (enabled && !started) {
+          showToast("Nao consegui ativar a escuta Misaka.", "warning");
+        }
+      } catch (err) {
+        console.error("[Misaka Wake] setEnabled failed:", err);
+        showToast(`Erro ao ativar escuta: ${err.message}`, "error");
       }
     });
   }
@@ -1172,21 +1188,33 @@ document
   .addEventListener("click", loadAlerts);
 
 // Wake word
-btnWakeWord.addEventListener("click", () => {
-  if (!voiceWakeController) return;
+btnWakeWord.addEventListener("click", async () => {
+  console.log("[Misaka Wake] button clicked");
+  if (!voiceWakeController) {
+    console.error("[Misaka Wake] voiceWakeController not initialized");
+    showToast("Voice Wake nao inicializado.", "error");
+    return;
+  }
   const enabled = !voiceWakeController.enabled;
-  const started = voiceWakeController.setEnabled(enabled);
-  if (enabled && started) {
-    showToast('Wake word ativado.\nDiga "Misaka" para acionar.', "info");
-  } else if (!enabled) {
-    showToast("Wake word desativado.", "info");
-  } else if (enabled && !started) {
-    showToast(
-      voiceWakeController.lastError ||
-        voiceWakeController.elements.error?.textContent ||
-        "Nao consegui ativar a escuta Misaka.",
-      "warning",
-    );
+  console.log("[Misaka Wake] toggling to:", enabled);
+  try {
+    const started = await voiceWakeController.setEnabled(enabled);
+    console.log("[Misaka Wake] setEnabled result:", started);
+    if (enabled && started) {
+      showToast('Wake word ativado.\nDiga "Misaka" para acionar.', "info");
+    } else if (!enabled) {
+      showToast("Wake word desativado.", "info");
+    } else if (enabled && !started) {
+      showToast(
+        voiceWakeController.lastError ||
+          voiceWakeController.elements.error?.textContent ||
+          "Nao consegui ativar a escuta Misaka.",
+        "warning",
+      );
+    }
+  } catch (err) {
+    console.error("[Misaka Wake] toggle failed:", err);
+    showToast(`Erro ao ativar escuta: ${err.message}`, "error");
   }
 });
 // Settings toggles
@@ -1252,6 +1280,9 @@ modalOverlay.addEventListener("click", (e) => {
 });
 
 // ==================== Initialize ====================
+console.log("[Misaka] app.js loaded");
+console.log("[Misaka] misakaDesktop:", window.misakaDesktop ? "available" : "not available");
+
 if ("Notification" in window && Notification.permission === "default") {
   Notification.requestPermission();
 }

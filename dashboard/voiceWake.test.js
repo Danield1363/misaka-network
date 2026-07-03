@@ -90,50 +90,57 @@ const startFailureController = new VoiceWakeController({
   },
 });
 
-assert.strictEqual(startFailureController.start(), false);
-assert.strictEqual(startFailureController.enabled, false);
-assert.strictEqual(startFailureController.state, "error");
+// start() is now async — test it with .then()
+startFailureController.start().then((result) => {
+  assert.strictEqual(result, false);
+  assert.strictEqual(startFailureController.enabled, false);
+  assert.strictEqual(startFailureController.state, "error");
 
-if (previousSpeechRecognition) {
-  globalThis.SpeechRecognition = previousSpeechRecognition;
-} else {
-  delete globalThis.SpeechRecognition;
-}
+  if (previousSpeechRecognition) {
+    globalThis.SpeechRecognition = previousSpeechRecognition;
+  } else {
+    delete globalThis.SpeechRecognition;
+  }
+
+  runModeSelectionTests();
+});
 
 // --- Mode selection tests ---
 
-const prevSR = globalThis.SpeechRecognition;
-const prevWebkit = globalThis.webkitSpeechRecognition;
-const prevDesktop = globalThis.misakaDesktop;
+function runModeSelectionTests() {
+  const prevSR = globalThis.SpeechRecognition;
+  const prevWebkit = globalThis.webkitSpeechRecognition;
+  const prevDesktop = globalThis.misakaDesktop;
 
-// Test: Web Speech available -> web_speech
-class FakeRecognition { start() {} stop() {} }
-globalThis.SpeechRecognition = FakeRecognition;
-assert.strictEqual(chooseVoiceWakeMode(), "web_speech");
-assert.strictEqual(isWebSpeechSupported(), true);
+  // Test: Web Speech available -> web_speech
+  class FakeRecognition { start() {} stop() {} }
+  globalThis.SpeechRecognition = FakeRecognition;
+  assert.strictEqual(chooseVoiceWakeMode(), "web_speech");
+  assert.strictEqual(isWebSpeechSupported(), true);
 
-// Test: Web Speech unavailable + native available -> native_desktop
-delete globalThis.SpeechRecognition;
-delete globalThis.webkitSpeechRecognition;
-globalThis.misakaDesktop = {
-  isAvailable: true,
-  nativeVoiceIsAvailable: () => true,
-  nativeVoiceStart: () => Promise.resolve({ success: true }),
-  nativeVoiceStop: () => Promise.resolve({ success: true }),
-};
-assert.strictEqual(chooseVoiceWakeMode(), "native_desktop");
-assert.strictEqual(isNativeDesktopSupported(), true);
+  // Test: Web Speech unavailable + native available -> native_desktop
+  delete globalThis.SpeechRecognition;
+  delete globalThis.webkitSpeechRecognition;
+  globalThis.misakaDesktop = {
+    isAvailable: true,
+    nativeVoiceIsAvailable: () => true,
+    nativeVoiceStart: () => Promise.resolve({ success: true }),
+    nativeVoiceStop: () => Promise.resolve({ success: true }),
+  };
+  assert.strictEqual(chooseVoiceWakeMode(), "native_desktop");
+  assert.strictEqual(isNativeDesktopSupported(), true);
 
-// Test: Nothing available -> unavailable
-delete globalThis.misakaDesktop;
-assert.strictEqual(chooseVoiceWakeMode(), "unavailable");
+  // Test: Nothing available -> unavailable
+  delete globalThis.misakaDesktop;
+  assert.strictEqual(chooseVoiceWakeMode(), "unavailable");
 
-// Restore globals
-if (prevSR) globalThis.SpeechRecognition = prevSR;
-else delete globalThis.SpeechRecognition;
-if (prevWebkit) globalThis.webkitSpeechRecognition = prevWebkit;
-else delete globalThis.webkitSpeechRecognition;
-if (prevDesktop) globalThis.misakaDesktop = prevDesktop;
-else delete globalThis.misakaDesktop;
+  // Restore globals
+  if (prevSR) globalThis.SpeechRecognition = prevSR;
+  else delete globalThis.SpeechRecognition;
+  if (prevWebkit) globalThis.webkitSpeechRecognition = prevWebkit;
+  else delete globalThis.webkitSpeechRecognition;
+  if (prevDesktop) globalThis.misakaDesktop = prevDesktop;
+  else delete globalThis.misakaDesktop;
 
-console.log("voiceWake extraction tests passed");
+  console.log("voiceWake extraction tests passed");
+}
