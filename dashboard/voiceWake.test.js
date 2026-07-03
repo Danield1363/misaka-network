@@ -101,8 +101,38 @@ async function runCloudVoiceTests() {
     },
   });
   class FakeMediaRecorder {
+    constructor(stream, options = {}) {
+      this.stream = stream;
+      this.mimeType = options.mimeType || "audio/webm";
+      this.state = "inactive";
+      this.ondataavailable = null;
+      this.onerror = null;
+      this.onstop = null;
+    }
+
     static isTypeSupported() {
       return true;
+    }
+
+    start() {
+      this.state = "recording";
+    }
+
+    requestData() {
+      if (this.ondataavailable) {
+        this.ondataavailable({
+          data: new Blob(["fake-audio"], { type: this.mimeType }),
+        });
+      }
+    }
+
+    stop() {
+      if (this.state === "inactive") return;
+      this.requestData();
+      this.state = "inactive";
+      setTimeout(() => {
+        if (this.onstop) this.onstop();
+      }, 0);
     }
   }
   const restoreRecorder = setGlobal("MediaRecorder", FakeMediaRecorder);
@@ -149,16 +179,53 @@ async function runCloudVoiceTests() {
     },
   });
   await controller.init();
-  const result = await controller.sendAudioForTranscription(
-    new Blob(["fake"], { type: "audio/webm" }),
-  );
+  controller.chunkMs = 10;
+  controller.stream = {
+    getTracks: () => [{ stop: () => {} }],
+  };
+  controller.mediaStream = controller.stream;
+  controller.enabled = true;
+
+  const blob = await controller.recordChunk();
+  assert.ok(blob);
+  assert.ok(blob.size > 0);
+  assert.strictEqual(controller.recording, false);
+
+  const result = await controller.sendAudioForTranscription(blob);
 
   assert.strictEqual(result.success, true);
+  assert.strictEqual(result.text, "abrir youtube");
+  await controller.processVoiceText(result.text);
   assert.deepStrictEqual(commands, ["abrir youtube"]);
 
   controller.processVoiceText("abrir youtube");
   controller.processVoiceText("abrir youtube");
   assert.deepStrictEqual(commands, ["abrir youtube"]);
+
+  controller.stop();
+  assert.strictEqual(controller.listeningLoopActive, false);
+  assert.strictEqual(controller.recording, false);
+
+  const loopCommands = [];
+  const loopController = new VoiceWakeController({
+    storage: fakeStorage(),
+    callbacks: {
+      onCommand: (command) => {
+        loopCommands.push(command);
+        return Promise.resolve({ success: true });
+      },
+    },
+  });
+  loopController.chunkMs = 10;
+  await loopController.init();
+  const startResult = await loopController.start();
+  assert.strictEqual(startResult.success, true);
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  assert.deepStrictEqual(loopCommands, ["abrir youtube"]);
+  assert.strictEqual(loopController.recording, false);
+  assert.strictEqual(loopController.transcribing, false);
+  loopController.stop();
+  assert.strictEqual(loopController.enabled, false);
 
   restoreConfirm();
   restoreFetch();

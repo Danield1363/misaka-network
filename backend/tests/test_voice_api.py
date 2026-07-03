@@ -43,6 +43,27 @@ def test_voice_transcribe_mock(client):
     assert data["provider"] == "mock"
 
 
+def test_voice_transcribe_mock_empty_env_uses_dev_fallback(monkeypatch):
+    monkeypatch.setenv("VOICE_ENABLED", "true")
+    monkeypatch.setenv("VOICE_PROVIDER", "mock")
+    monkeypatch.setenv("VOICE_MOCK_TRANSCRIPT", "")
+    get_settings.cache_clear()
+    app = create_app()
+    with TestClient(app) as test_client:
+        response = test_client.post(
+            "/api/voice/transcribe",
+            files={"audio": ("command.webm", BytesIO(b"fake-audio"), "audio/webm")},
+            data={"language": "pt", "source": "test"},
+        )
+    get_settings.cache_clear()
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["success"] is True
+    assert data["text"] == "abrir youtube"
+    assert data["provider"] == "mock"
+
+
 def test_voice_transcribe_without_file(client):
     response = client.post("/api/voice/transcribe", data={"language": "pt"})
     assert response.status_code == 200

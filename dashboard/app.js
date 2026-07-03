@@ -866,7 +866,7 @@ function updateWakeCommand(command) {
 
 function sendVoiceCommand(command) {
   updateWakeCommand(command);
-  return sendMessage(command, { source: "cloud_voice" });
+  return sendMessage(command, { source: "voice" });
 }
 
 async function setWakeWordEnabled(enabled) {

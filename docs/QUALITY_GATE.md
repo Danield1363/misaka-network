@@ -91,3 +91,17 @@
 
 Automatizado e empacotamento: PASS.  
 Testes manuais com microfone, Vivaldi e clique/fala na UI: NOT RUN nesta rodada, documentados sem marcar PASS.
+
+## Hotfix Cloud Voice Recording Loop - 2026-07-03
+
+| Teste | Resultado esperado | Resultado obtido | Status |
+| --- | --- | --- | --- |
+| `node --check dashboard/app.js` | Sem SyntaxError | Sem erro | PASS |
+| `node --check dashboard/voiceWake.js` | Sem SyntaxError | Sem erro | PASS |
+| `node --check dashboard/voiceWake.test.js` | Sem SyntaxError | Sem erro | PASS |
+| `node --check desktop/main.js` | Sem SyntaxError | Sem erro | PASS |
+| `node --check desktop/preload.js` | Sem SyntaxError | Sem erro | PASS |
+| `node dashboard/voiceWake.test.js` | Recorder para chunk, envia mock transcription, detecta comando e nao fica em `recording` | `all voiceWake tests passed` | PASS |
+| `pytest` | Suite Python executa | Falhou por shim local quebrado do Hermes/Python 3.11 | FAIL (ambiente) |
+| `python -m pytest` | Suite Python executa | `325 passed, 1 warning in 15.91s` | PASS |
+| Cloud Voice mock manual | Ativar escuta abre YouTube via microfone real | Nao executado nesta rodada | NOT RUN |

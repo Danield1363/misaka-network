@@ -16,9 +16,9 @@ class MockVoiceProvider(VoiceProvider):
         filename: str,
         content_type: str,
     ) -> dict:
+        transcript = self.settings.VOICE_MOCK_TRANSCRIPT.strip() or "abrir youtube"
         return {
-            "text": self.settings.VOICE_MOCK_TRANSCRIPT.strip(),
+            "text": transcript,
             "language": language,
             "confidence": None,
         }
-

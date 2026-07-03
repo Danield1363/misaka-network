@@ -76,6 +76,16 @@
     return Date.now ? Date.now() : new Date().getTime();
   }
 
+  function sleep(ms) {
+    return new Promise((resolve) => root.setTimeout(resolve, ms));
+  }
+
+  function cloudLog(...args) {
+    if (root.console && typeof root.console.log === "function") {
+      root.console.log("[Cloud Voice]", ...args);
+    }
+  }
+
   function normalizeVoiceText(text) {
     return String(text || "")
       .normalize("NFD")
@@ -149,6 +159,33 @@
       root.navigator.mediaDevices.getUserMedia &&
       root.MediaRecorder,
     );
+  }
+
+  function chooseSupportedAudioMimeType() {
+    const candidates = [
+      "audio/webm;codecs=opus",
+      "audio/webm",
+      "audio/ogg;codecs=opus",
+      "audio/ogg",
+      "audio/mp4",
+    ];
+
+    if (!root.MediaRecorder) return "";
+    if (typeof root.MediaRecorder.isTypeSupported !== "function") return "";
+
+    for (const type of candidates) {
+      if (root.MediaRecorder.isTypeSupported(type)) return type;
+    }
+
+    return "";
+  }
+
+  function guessAudioExtension(mimeType = "") {
+    if (mimeType.includes("ogg")) return "ogg";
+    if (mimeType.includes("mp4")) return "m4a";
+    if (mimeType.includes("wav")) return "wav";
+    if (mimeType.includes("mpeg") || mimeType.includes("mp3")) return "mp3";
+    return "webm";
   }
 
   function isWebSpeechSupported() {
@@ -248,8 +285,11 @@
       );
       this.language = this.storage.getItem("voice_language") || "pt";
       this.sessionId = `voice-${Math.random().toString(36).slice(2)}`;
+      this.stream = null;
       this.mediaStream = null;
       this.mediaRecorder = null;
+      this.recording = false;
+      this.listeningLoopActive = false;
       this.recordingTimer = null;
       this.restartTimer = null;
       this.commandCaptureTimer = null;
@@ -384,6 +424,7 @@
         this.mediaStream = await root.navigator.mediaDevices.getUserMedia({
           audio: true,
         });
+        this.stream = this.mediaStream;
         this.updateState(STATES.microphone_ready);
         return { success: true };
       } catch (error) {
@@ -396,118 +437,236 @@
       }
     }
 
-    startListeningLoop() {
-      if (!this.enabled && !this.starting) return;
-      if (!this.mediaStream) return;
+    async startListeningLoop() {
+      if (this.listeningLoopActive) return;
+      this.listeningLoopActive = true;
       this.enabled = true;
       this.active = true;
-      this.recordChunk();
+
+      while (this.enabled && this.listeningLoopActive) {
+        try {
+          const blob = await this.recordChunk();
+          if (!this.enabled || !this.listeningLoopActive) break;
+
+          if (!blob) {
+            this.updateState(
+              STATES.listening,
+              "Nenhuma fala capturada. Ouvindo...",
+            );
+            await sleep(300);
+            continue;
+          }
+
+          this.updateState(STATES.transcribing, "Transcrevendo comando...");
+          cloudLog("sending transcription");
+          const transcription = await this.sendAudioForTranscription(blob);
+          cloudLog("transcription result", transcription);
+
+          if (!this.enabled || !this.listeningLoopActive) break;
+
+          const text = String(transcription?.text || "").trim();
+          if (!text) {
+            this.updateState(
+              STATES.listening,
+              "Nenhum comando identificado. Ouvindo...",
+            );
+            await sleep(300);
+            continue;
+          }
+
+          this.updateState(STATES.processing_command, `Processando: ${text}`);
+          await this.processVoiceText(text);
+
+          if (this.enabled && this.listeningLoopActive) {
+            this.updateState(STATES.listening, "Ouvindo comandos...");
+            await sleep(300);
+          }
+        } catch (error) {
+          this.lastError = error?.message || String(error);
+          this.enabled = false;
+          this.active = false;
+          this.listeningLoopActive = false;
+          this.recording = false;
+          this.transcribing = false;
+          this.persistSettings();
+          this.stopListeningLoop();
+          this.stopMediaStream();
+          this.updateState(STATES.error, this.lastError);
+          this.emitError("cloud_voice", this.lastError);
+          break;
+        }
+      }
+
+      this.recording = false;
+      this.transcribing = false;
+      if (!this.enabled && this.state !== STATES.error) {
+        this.updateState(STATES.off, "Escuta desligada.");
+      }
     }
 
     stopListeningLoop() {
+      this.listeningLoopActive = false;
       if (this.recordingTimer) {
         root.clearTimeout(this.recordingTimer);
         this.recordingTimer = null;
       }
-      if (this.mediaRecorder && this.mediaRecorder.state !== "inactive") {
+      if (this.mediaRecorder && this.mediaRecorder.state === "recording") {
         try {
           this.mediaRecorder.stop();
         } catch (_) {}
       }
     }
 
-    recordChunk() {
-      if (
-        !this.enabled ||
-        !this.mediaStream ||
-        this.transcribing ||
-        this.processingCommand
-      ) {
-        this.scheduleNextChunk();
-        return;
+    async recordChunk() {
+      const stream = this.stream || this.mediaStream;
+      if (!stream) {
+        throw new Error("Microfone nao inicializado.");
       }
 
-      let recorder;
-      try {
-        const options = this.bestRecorderOptions();
-        recorder = options
-          ? new root.MediaRecorder(this.mediaStream, options)
-          : new root.MediaRecorder(this.mediaStream);
-      } catch (error) {
-        this.enabled = false;
-        this.active = false;
-        this.updateState(
-          STATES.error,
-          `MediaRecorder falhou: ${error.message}`,
-        );
-        this.emitError("media_recorder", error.message);
-        return;
+      if (this.recording || this.transcribing) {
+        return null;
       }
+
+      this.recording = true;
+      this.updateState(STATES.recording, "Gravando comando...");
+      cloudLog("recording chunk started");
 
       const chunks = [];
-      this.mediaRecorder = recorder;
-      recorder.ondataavailable = (event) => {
-        if (event.data && event.data.size > 0) chunks.push(event.data);
-      };
-      recorder.onerror = (event) => {
-        const message = event.error?.message || "Erro ao gravar audio.";
-        this.updateState(STATES.error, message);
-        this.emitError("media_recorder", message);
-      };
-      recorder.onstop = async () => {
-        if (!this.enabled || this.stoppedByUser || chunks.length === 0) {
-          this.scheduleNextChunk();
+      const mimeType = chooseSupportedAudioMimeType();
+
+      return new Promise((resolve, reject) => {
+        let recorder;
+        let finished = false;
+        let forceStopTimer = null;
+        let hardTimeout = null;
+
+        const clearLocalTimers = () => {
+          if (forceStopTimer) root.clearTimeout(forceStopTimer);
+          if (hardTimeout) root.clearTimeout(hardTimeout);
+          forceStopTimer = null;
+          hardTimeout = null;
+        };
+
+        const finish = (result) => {
+          if (finished) return;
+          finished = true;
+          this.recording = false;
+          clearLocalTimers();
+          if (this.mediaRecorder === recorder) this.mediaRecorder = null;
+          resolve(result);
+        };
+
+        const fail = (error) => {
+          if (finished) return;
+          finished = true;
+          this.recording = false;
+          clearLocalTimers();
+          if (this.mediaRecorder === recorder) this.mediaRecorder = null;
+          reject(error);
+        };
+
+        try {
+          recorder = mimeType
+            ? new root.MediaRecorder(stream, { mimeType })
+            : new root.MediaRecorder(stream);
+          this.mediaRecorder = recorder;
+        } catch (error) {
+          fail(
+            new Error(
+              "Formato de gravacao de audio nao suportado neste ambiente.",
+            ),
+          );
           return;
         }
 
-        const blob = new root.Blob(chunks, {
-          type: recorder.mimeType || "audio/webm",
-        });
-        await this.sendAudioForTranscription(blob);
-        this.scheduleNextChunk();
-      };
+        recorder.ondataavailable = (event) => {
+          if (event.data && event.data.size > 0) {
+            chunks.push(event.data);
+          }
+        };
 
-      try {
-        recorder.start();
-        this.updateState(STATES.recording);
-        this.recordingTimer = root.setTimeout(() => {
-          this.recordingTimer = null;
-          if (recorder.state !== "inactive") recorder.stop();
-        }, this.chunkMs);
-      } catch (error) {
-        this.updateState(
-          STATES.error,
-          `MediaRecorder nao iniciou: ${error.message}`,
+        recorder.onerror = (event) => {
+          fail(new Error(event.error?.message || "Erro no MediaRecorder."));
+        };
+
+        recorder.onstop = () => {
+          try {
+            const blob = new root.Blob(chunks, {
+              type: recorder.mimeType || mimeType || "audio/webm",
+            });
+
+            cloudLog("chunk stopped", blob.size, blob.type);
+
+            if (!blob || blob.size === 0) {
+              finish(null);
+              return;
+            }
+
+            finish(blob);
+          } catch (error) {
+            fail(error);
+          }
+        };
+
+        try {
+          recorder.start();
+        } catch (error) {
+          fail(error);
+          return;
+        }
+
+        forceStopTimer = root.setTimeout(() => {
+          try {
+            if (
+              recorder.state === "recording" &&
+              typeof recorder.requestData === "function"
+            ) {
+              recorder.requestData();
+            }
+            if (recorder.state === "recording") {
+              recorder.stop();
+            }
+          } catch (error) {
+            fail(error);
+          }
+        }, this.chunkMs || 4000);
+
+        hardTimeout = root.setTimeout(
+          () => {
+            if (!this.enabled || !this.listeningLoopActive) {
+              finish(null);
+              return;
+            }
+            try {
+              if (recorder.state === "recording") {
+                recorder.stop();
+              }
+            } catch (_) {}
+            fail(new Error("Timeout ao gravar audio."));
+          },
+          (this.chunkMs || 4000) + 3000,
         );
-        this.emitError("media_recorder_start", error.message);
-      }
+      });
     }
 
     scheduleNextChunk() {
-      if (
-        !this.enabled ||
-        this.stoppedByUser ||
-        this.inputMode !== VOICE_INPUT_MODES.cloud
-      ) {
-        return;
-      }
-      if (this.recordingTimer) return;
-      this.recordingTimer = root.setTimeout(() => {
-        this.recordingTimer = null;
-        if (this.enabled && !this.transcribing && !this.processingCommand) {
-          this.recordChunk();
+      try {
+        if (this.enabled && !this.listeningLoopActive) {
+          this.startListeningLoop();
         }
-      }, 150);
+      } catch (_) {}
     }
 
     async sendAudioForTranscription(blob) {
-      if (this.transcribing)
-        return { success: false, error: "Transcricao em andamento." };
+      if (this.transcribing) {
+        throw new Error("Transcricao em andamento.");
+      }
       this.transcribing = true;
       this.updateState(STATES.transcribing);
       try {
         const form = new root.FormData();
-        form.append("audio", blob, this.audioFileName(blob));
+        const extension = guessAudioExtension(blob.type || "");
+        form.append("audio", blob, `misaka-command.${extension}`);
         form.append("language", this.language);
         form.append("source", "cloud_voice");
         form.append("session_id", this.sessionId);
@@ -516,30 +675,21 @@
           method: "POST",
           body: form,
         });
-        const data = await response.json().catch(() => ({}));
-        if (!response.ok || data.success === false) {
-          const message =
-            data.safe_message ||
-            data.error ||
-            "Provider de voz falhou. Tente novamente.";
-          this.lastError = message;
-          this.updateState(STATES.error, message);
-          this.emitError(data.error || "voice_transcribe", message);
-          return { success: false, error: message, data };
+        const data = await response.json().catch(() => null);
+        if (!response.ok || !data?.success) {
+          throw new Error(
+            data?.safe_message ||
+              data?.error ||
+              `Falha na transcricao: HTTP ${response.status}`,
+          );
         }
-        this.handleTranscription(data.text || "");
-        return { success: true, data };
+
+        return data;
       } catch (error) {
-        const message = "Backend de voz indisponivel.";
-        this.lastError = `${message} ${error.message || ""}`.trim();
-        this.updateState(STATES.error, this.lastError);
-        this.emitError("voice_backend", this.lastError);
-        return { success: false, error: this.lastError };
+        this.lastError = error?.message || "Backend de voz indisponivel.";
+        throw error;
       } finally {
         this.transcribing = false;
-        if (this.enabled && !this.processingCommand) {
-          this.updateState(STATES.listening, "Cloud Voice ouvindo comandos.");
-        }
       }
     }
 
@@ -561,6 +711,7 @@
       if (!raw) return null;
       this.lastTranscript = raw;
       this.updateTranscript(raw);
+      this.emitTranscript(raw, true);
 
       const wakeCommand = this.extractCommandFromWakePhrase(raw);
       let command = null;
@@ -619,6 +770,7 @@
       this.lastExecutedVoiceCommandAt = now();
       this.lastCommand = cleanCommand;
       this.updateCommand(cleanCommand);
+      cloudLog("command detected", cleanCommand);
       this.updateState(STATES.processing_command);
 
       const sender = this.sendCommandCallback || this.onCommand;
@@ -679,6 +831,8 @@
       this.stoppedByUser = true;
       this.processingCommand = false;
       this.transcribing = false;
+      this.recording = false;
+      this.listeningLoopActive = false;
       this.waitingForCommand = false;
       this.stopListeningLoop();
       this.stopWebSpeech();
@@ -883,9 +1037,11 @@
     }
 
     stopMediaStream() {
-      if (!this.mediaStream) return;
-      this.mediaStream.getTracks().forEach((track) => track.stop());
+      const stream = this.stream || this.mediaStream;
+      if (!stream) return;
+      stream.getTracks().forEach((track) => track.stop());
       this.mediaStream = null;
+      this.stream = null;
     }
 
     clearTimers() {
@@ -1054,6 +1210,8 @@
     isDirectVoiceCommand,
     classifyVoiceCommand,
     isCloudVoiceSupported,
+    chooseSupportedAudioMimeType,
+    guessAudioExtension,
     isWebSpeechSupported,
     isNativeDesktopSupported,
     chooseVoiceWakeMode,
@@ -1073,6 +1231,8 @@
       isDirectVoiceCommand,
       classifyVoiceCommand,
       isCloudVoiceSupported,
+      chooseSupportedAudioMimeType,
+      guessAudioExtension,
       isWebSpeechSupported,
       isNativeDesktopSupported,
       chooseVoiceWakeMode,
