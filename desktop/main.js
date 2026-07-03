@@ -14,6 +14,33 @@ const fs = require("fs");
 const os = require("os");
 const { spawn } = require("child_process");
 
+// --- Safe logger (prevents EPIPE crash) ---
+function safeLog(...args) {
+  try { console.log(...args); } catch (_) {}
+}
+function safeWarn(...args) {
+  try { console.warn(...args); } catch (_) {}
+}
+function safeError(...args) {
+  try { console.error(...args); } catch (_) {}
+}
+
+// --- EPIPE handling ---
+process.stdout?.on?.("error", (err) => {
+  if (err && err.code === "EPIPE") return;
+  safeError("[stdout error]", err);
+});
+process.stderr?.on?.("error", (err) => {
+  if (err && err.code === "EPIPE") return;
+});
+process.on("uncaughtException", (error) => {
+  if (error && error.code === "EPIPE") return;
+  safeError("[Misaka Desktop] uncaughtException:", error);
+});
+process.on("unhandledRejection", (reason) => {
+  safeError("[Misaka Desktop] unhandledRejection:", reason);
+});
+
 let mainWindow;
 let tray;
 let isQuitting = false;
@@ -54,7 +81,7 @@ function loadNotifiedIds() {
       notifiedAlertIds = new Set(data.ids || []);
     }
   } catch (error) {
-    console.error("Failed to load notified IDs:", error);
+    safeError("Failed to load notified IDs:", error);
   }
 }
 
@@ -67,7 +94,7 @@ function saveNotifiedIds() {
       }),
     );
   } catch (error) {
-    console.error("Failed to save notified IDs:", error);
+    safeError("Failed to save notified IDs:", error);
   }
 }
 
@@ -161,7 +188,7 @@ function createWindow() {
   }
 
   const preloadPath = path.join(__dirname, "preload.js");
-  console.log("[Misaka Desktop] preload path:", preloadPath);
+  safeLog("[Misaka Desktop] preload path:", preloadPath);
 
   mainWindow = new BrowserWindow({
     width: 1200,
@@ -380,7 +407,7 @@ const WINDOWS_APP_LAUNCHERS = {
 };
 
 function launchApp(appName) {
-  console.log("[Misaka Desktop] openApp requested:", appName);
+  safeLog("[Misaka Desktop] openApp requested:", appName);
 
   if (!appName || typeof appName !== "string") {
     return { success: false, error: "Nome do app obrigatorio." };
@@ -407,10 +434,10 @@ function launchApp(appName) {
 
   try {
     launcher();
-    console.log("[Misaka Desktop] openApp success:", normalizedApp);
+    safeLog("[Misaka Desktop] openApp success:", normalizedApp);
     return { success: true, app: normalizedApp, method: "allowlist" };
   } catch (e) {
-    console.log("[Misaka Desktop] openApp failed:", normalizedApp, e.message);
+    safeLog("[Misaka Desktop] openApp failed:", normalizedApp, e.message);
     return {
       success: false,
       app: normalizedApp,
@@ -434,7 +461,7 @@ function isSafeUrl(url) {
 }
 
 async function openExternalUrl(url) {
-  console.log("[Misaka Desktop] openUrl requested:", url);
+  safeLog("[Misaka Desktop] openUrl requested:", url);
   if (!isSafeUrl(url)) {
     return {
       success: false,
@@ -443,10 +470,10 @@ async function openExternalUrl(url) {
   }
   try {
     await shell.openExternal(url);
-    console.log("[Misaka Desktop] openUrl success:", url);
+    safeLog("[Misaka Desktop] openUrl success:", url);
     return { success: true, url };
   } catch (e) {
-    console.log("[Misaka Desktop] openUrl failed:", url, e.message);
+    safeLog("[Misaka Desktop] openUrl failed:", url, e.message);
     return { success: false, url, error: e.message };
   }
 }
@@ -567,38 +594,59 @@ function setupIPC() {
   });
 
   // --- Native Voice IPC ---
-  ipcMain.handle("native-voice:is-available", () => {
+  function ensureNativeVoiceBridge() {
     if (!nativeVoiceBridge) {
       const { NativeVoiceBridge } = require("./voice/nativeVoiceBridge");
       nativeVoiceBridge = new NativeVoiceBridge(mainWindow);
     }
-    return nativeVoiceBridge.isAvailable();
+    return nativeVoiceBridge;
+  }
+
+  ipcMain.handle("native-voice:is-available", () => {
+    try {
+      return ensureNativeVoiceBridge().isAvailable();
+    } catch (error) {
+      safeError("[Misaka Desktop] native voice availability error:", error);
+      return false;
+    }
   });
 
   ipcMain.handle("native-voice:start", (_event, modelPath) => {
-    if (!nativeVoiceBridge) {
-      const { NativeVoiceBridge } = require("./voice/nativeVoiceBridge");
-      nativeVoiceBridge = new NativeVoiceBridge(mainWindow);
+    try {
+      return ensureNativeVoiceBridge().start(modelPath);
+    } catch (error) {
+      safeError("[Misaka Desktop] native voice start error:", error);
+      return { success: false, error: error.message };
     }
-    return nativeVoiceBridge.start(modelPath);
   });
 
   ipcMain.handle("native-voice:stop", () => {
-    if (nativeVoiceBridge) return nativeVoiceBridge.stop();
-    return { success: true };
+    try {
+      if (nativeVoiceBridge) return nativeVoiceBridge.stop();
+      return { success: true };
+    } catch (error) {
+      safeError("[Misaka Desktop] native voice stop error:", error);
+      return { success: false, error: error.message };
+    }
   });
 
   ipcMain.handle("native-voice:restart", (_event, modelPath) => {
-    if (!nativeVoiceBridge) {
-      const { NativeVoiceBridge } = require("./voice/nativeVoiceBridge");
-      nativeVoiceBridge = new NativeVoiceBridge(mainWindow);
+    try {
+      return ensureNativeVoiceBridge().restart(modelPath);
+    } catch (error) {
+      safeError("[Misaka Desktop] native voice restart error:", error);
+      return { success: false, error: error.message };
     }
-    return nativeVoiceBridge.restart(modelPath);
   });
 
   ipcMain.handle("native-voice:status", () => {
-    if (nativeVoiceBridge) return nativeVoiceBridge.status();
-    return { state: "stopped", lastError: "", running: false };
+    try {
+      if (nativeVoiceBridge) return nativeVoiceBridge.status();
+      return { state: "stopped", lastError: "", running: false };
+    } catch (error) {
+      safeError("[Misaka Desktop] native voice status error:", error);
+      return { state: "error", lastError: error.message, running: false };
+    }
   });
 }
 
@@ -630,7 +678,7 @@ function setupPolling() {
         saveNotifiedIds();
       }
     } catch (error) {
-      console.error("Polling error:", error);
+      safeError("Polling error:", error);
     }
   }, 10000);
 }

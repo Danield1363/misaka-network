@@ -13,6 +13,13 @@ const { spawn } = require("child_process");
 const path = require("path");
 const fs = require("fs");
 
+function safeLog(...args) {
+  try { console.log(...args); } catch (_) {}
+}
+function safeError(...args) {
+  try { console.error(...args); } catch (_) {}
+}
+
 const PYTHON_DIR = path.join(__dirname, "python");
 const SERVICE_SCRIPT = path.join(PYTHON_DIR, "misaka_voice_service.py");
 const DEFAULT_MODEL_PATH = path.join(__dirname, "models", "pt");
@@ -83,7 +90,7 @@ class NativeVoiceBridge {
     this.process.stderr.on("data", (chunk) => {
       const text = chunk.toString("utf-8").trim();
       if (text) {
-        console.error("[NativeVoice] stderr:", text);
+        safeError("[NativeVoice] stderr:", text);
       }
     });
 
@@ -151,9 +158,11 @@ class NativeVoiceBridge {
   }
 
   _send(channel, data) {
-    if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-      this.mainWindow.webContents.send(channel, data);
-    }
+    try {
+      if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+        this.mainWindow.webContents.send(channel, data);
+      }
+    } catch (_) {}
   }
 }
 
