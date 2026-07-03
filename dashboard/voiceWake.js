@@ -226,6 +226,9 @@
       this.voiceCommandMode = "hybrid";
       this.lastExecutedCommand = "";
       this.lastExecutedAt = 0;
+      this._daemonWs = null;
+      this._daemonUrl = "ws://127.0.0.1:8765";
+      this._daemonConnected = false;
 
       this.settings = {
         wake_phrases: DEFAULT_WAKE_PHRASES.slice(),
@@ -281,6 +284,19 @@
       if (this.voiceMode === "web_speech") {
         return this.startWebSpeech();
       }
+
+      // Try daemon WebSocket if Web Speech not available
+      this.updateState(STATES.checking, "Conectando ao daemon de voz...");
+      const daemonConnected = await this.connectDaemon();
+      if (daemonConnected) {
+        this.voiceMode = "daemon_websocket";
+        this.enabled = true;
+        this.active = true;
+        this.persistSettings();
+        this.updateState(STATES.listening_for_wake, "Wake: conectado ao daemon");
+        return true;
+      }
+
       if (this.voiceMode === "native_desktop") {
         return await this.startNativeDesktop();
       }
@@ -302,6 +318,8 @@
         this.stopRecognitionOnly();
       } else if (this.voiceMode === "native_desktop") {
         this.stopNativeDesktop();
+      } else if (this.voiceMode === "daemon_websocket") {
+        this.disconnectDaemon();
       }
 
       this.persistSettings();
@@ -767,6 +785,90 @@
         this.settings.voice_command_mode = mode;
         this.persistSettings();
         this.debug(`voiceCommandMode set to ${mode}`);
+      }
+    }
+
+    // --- Daemon WebSocket ---
+
+    async connectDaemon(url) {
+      const daemonUrl = url || this._daemonUrl;
+      if (this._daemonWs && this._daemonConnected) {
+        this.debug("daemon already connected");
+        return true;
+      }
+
+      return new Promise((resolve) => {
+        try {
+          const ws = new root.WebSocket(daemonUrl);
+          this._daemonWs = ws;
+          this._daemonConnected = false;
+
+          const timeout = root.setTimeout(() => {
+            if (!this._daemonConnected) {
+              ws.close();
+              this._daemonWs = null;
+              resolve(false);
+            }
+          }, 3000);
+
+          ws.onopen = () => {
+            this._daemonConnected = true;
+            root.clearTimeout(timeout);
+            this.debug("daemon connected");
+            resolve(true);
+          };
+
+          ws.onmessage = (event) => {
+            try {
+              const data = JSON.parse(event.data);
+              this._handleDaemonMessage(data);
+            } catch { /* ignore */ }
+          };
+
+          ws.onerror = () => {
+            root.clearTimeout(timeout);
+            this._daemonWs = null;
+            this._daemonConnected = false;
+            resolve(false);
+          };
+
+          ws.onclose = () => {
+            this._daemonConnected = false;
+            this._daemonWs = null;
+            this.debug("daemon disconnected");
+          };
+        } catch {
+          resolve(false);
+        }
+      });
+    }
+
+    disconnectDaemon() {
+      if (this._daemonWs) {
+        try { this._daemonWs.close(); } catch { /* ignore */ }
+        this._daemonWs = null;
+        this._daemonConnected = false;
+      }
+    }
+
+    _handleDaemonMessage(data) {
+      if (data.type === "transcript") {
+        const text = data.text || "";
+        this.lastTranscript = text;
+        this.updateTranscript(text);
+        this.emitTranscript(text, true);
+        this.processTranscript(text);
+      } else if (data.type === "command") {
+        const command = data.command || "";
+        if (command) {
+          this.sendVoiceCommand(command);
+        }
+      } else if (data.type === "status") {
+        this.debug(`daemon status: ${data.state}`);
+      } else if (data.type === "error") {
+        this.lastError = data.message || data.error || "Erro no daemon";
+        this.updateState(STATES.error, this.lastError);
+        this.emitError("daemon", this.lastError);
       }
     }
 

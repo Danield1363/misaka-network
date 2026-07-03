@@ -29,7 +29,9 @@ function safeError(...args) {
 
 const PYTHON_DIR = path.join(__dirname, "python");
 const SERVICE_SCRIPT = path.join(PYTHON_DIR, "misaka_voice_service.py");
+const DAEMON_SCRIPT = path.join(PYTHON_DIR, "misaka_voice_daemon.py");
 const DEFAULT_MODEL_PATH = path.join(__dirname, "models", "pt");
+const DEFAULT_DAEMON_PORT = 8765;
 
 class NativeVoiceBridge {
   constructor(mainWindow) {
@@ -44,41 +46,47 @@ class NativeVoiceBridge {
       const pythonCmd = process.platform === "win32" ? "python" : "python3";
       const { execSync } = require("child_process");
       execSync(`${pythonCmd} --version`, { stdio: "ignore" });
-      return fs.existsSync(SERVICE_SCRIPT);
+      return fs.existsSync(DAEMON_SCRIPT) || fs.existsSync(SERVICE_SCRIPT);
     } catch {
       return false;
     }
   }
 
-  start(modelPath) {
+  // --- Daemon management ---
+
+  startDaemon(modelPath, port) {
     if (this.process) {
-      return { success: true, message: "Serviço já está rodando." };
+      return { success: true, message: "Daemon ja esta rodando.", port: this.daemonPort || DEFAULT_DAEMON_PORT };
     }
 
-    if (!fs.existsSync(SERVICE_SCRIPT)) {
-      const msg = "Script de voz nativo não encontrado.";
+    if (!fs.existsSync(DAEMON_SCRIPT)) {
+      const msg = "Script de daemon nao encontrado.";
       this.lastError = msg;
-      this._send("native-voice:error", { error: "script_not_found", message: msg });
       return { success: false, error: msg };
     }
 
     const resolvedModel = modelPath || DEFAULT_MODEL_PATH;
+    const resolvedPort = port || DEFAULT_DAEMON_PORT;
     const pythonCmd = process.platform === "win32" ? "python" : "python3";
 
     try {
-      this.process = spawn(pythonCmd, [SERVICE_SCRIPT, "--model", resolvedModel], {
+      this.process = spawn(pythonCmd, [
+        DAEMON_SCRIPT,
+        "--model", resolvedModel,
+        "--port", String(resolvedPort),
+      ], {
         cwd: PYTHON_DIR,
         stdio: ["ignore", "pipe", "pipe"],
         env: { ...process.env, PYTHONIOENCODING: "utf-8" },
       });
     } catch (err) {
-      const msg = `Falha ao iniciar serviço Python: ${err.message}`;
+      const msg = `Falha ao iniciar daemon: ${err.message}`;
       this.lastError = msg;
-      this._send("native-voice:error", { error: "spawn_failed", message: msg });
       return { success: false, error: msg };
     }
 
     this.state = "starting";
+    this.daemonPort = resolvedPort;
 
     this.process.stdout.on("data", (chunk) => {
       const lines = chunk.toString("utf-8").split("\n");
@@ -88,57 +96,62 @@ class NativeVoiceBridge {
         try {
           const event = JSON.parse(trimmed);
           this._handleEvent(event);
-        } catch {
-          // Non-JSON output from Python (e.g. warning) — ignore
-        }
+        } catch { /* ignore non-JSON */ }
       }
     });
 
     this.process.stderr.on("data", (chunk) => {
       const text = chunk.toString("utf-8").trim();
-      if (text) {
-        safeError("[NativeVoice] stderr:", text);
-      }
+      if (text) safeError("[Daemon] stderr:", text);
     });
 
     this.process.on("error", (err) => {
-      const msg = `Processo Python falhou: ${err.message}`;
+      const msg = `Daemon falhou: ${err.message}`;
       this.state = "error";
       this.lastError = msg;
-      this._send("native-voice:error", { error: "process_error", message: msg });
+      this._send("native-voice:error", { error: "daemon_error", message: msg });
       this.process = null;
     });
 
     this.process.on("close", (code) => {
       if (this.state !== "stopped") {
-        const msg = `Serviço encerrou com código ${code}`;
+        const msg = `Daemon encerrou com codigo ${code}`;
         this.state = "error";
         this.lastError = msg;
-        this._send("native-voice:error", { error: "process_exited", message: msg });
+        this._send("native-voice:error", { error: "daemon_exited", message: msg });
       }
       this.process = null;
     });
 
-    return { success: true, message: "Serviço de voz nativo iniciado." };
+    return { success: true, message: "Daemon de voz iniciado.", port: resolvedPort };
   }
 
-  stop() {
+  stopDaemon() {
     this.state = "stopped";
     if (this.process) {
-      try {
-        this.process.kill();
-      } catch {
-        // Process may already be dead
-      }
+      try { this.process.kill(); } catch { /* already dead */ }
       this.process = null;
     }
-    this._send("native-voice:status", { state: "stopped", message: "Serviço de voz parado." });
+    this._send("native-voice:status", { state: "stopped", message: "Daemon parado." });
     return { success: true };
   }
 
+  restartDaemon(modelPath, port) {
+    this.stopDaemon();
+    return this.startDaemon(modelPath, port);
+  }
+
+  // Legacy service methods (backward compat)
+  start(modelPath) {
+    return this.startDaemon(modelPath);
+  }
+
+  stop() {
+    return this.stopDaemon();
+  }
+
   restart(modelPath) {
-    this.stop();
-    return this.start(modelPath);
+    return this.restartDaemon(modelPath);
   }
 
   status() {
