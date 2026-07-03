@@ -1,8 +1,8 @@
-# Quality Gate — Misaka v0.3.5
+# Quality Gate — Misaka v0.3.6
 
 Use this checklist before any merge or release.
 
-**Last verified:** 2026-07-02 (v0.3.5 finalized — desktop bridge, app launching, voice wake, URL fix)
+**Last verified:** 2026-07-02 (v0.3.6 — Hybrid Voice Wake: Web Speech + Native Desktop Fallback)
 
 ## Syntax Validation
 
@@ -159,10 +159,16 @@ Use this checklist before any merge or release.
 | Wake phrase extraction | `node dashboard/voiceWake.test.js` | "Misaka, abra..." extracts command | PASS |
 | Two-step command flow | `node dashboard/voiceWake.test.js` | "Misaka" then command sends command | PASS |
 | Recognition start failure | `node dashboard/voiceWake.test.js` | start failure sets error and does not listen | PASS |
+| Mode: Web Speech available | `node dashboard/voiceWake.test.js` | chooseVoiceWakeMode returns "web_speech" | PASS |
+| Mode: Native available | `node dashboard/voiceWake.test.js` | chooseVoiceWakeMode returns "native_desktop" | PASS |
+| Mode: Nothing available | `node dashboard/voiceWake.test.js` | chooseVoiceWakeMode returns "unavailable" | PASS |
+| Native bridge syntax | `node --check desktop/voice/nativeVoiceBridge.js` | OK | PASS |
+| Preload native voice methods | `node --check desktop/preload.js` | nativeVoice* methods exposed | PASS |
+| Electron main native IPC | `node --check desktop/main.js` | native-voice:* handlers registered | PASS |
 | Missing SpeechRecognition | Code path | Shows unavailable/error state, not listening | PASS |
 | Microphone denied | Code path | Shows "Permissão de microfone negada." | PASS |
 | Electron media permission | Code review | `session.defaultSession.setPermissionRequestHandler` allows media/microphone | PASS |
 | Tray wake controls | Code review | Tray sends wake enable/disable event to renderer | PASS |
-| Native wake fallback | `docs/VOICE_WAKE_NATIVE_PLAN.md` | Documents future native mode and limitations | PASS |
+| Native voice docs | `docs/VOICE_WAKE.md` + `docs/DESKTOP_VOICE_SETUP.md` | Setup instructions documented | PASS |
 | Electron dashboard launch | `cd desktop && npm start` | Electron processes stay running after launch | PASS |
 | Real microphone phrase | Manual Chrome/Edge microphone test | Requires human speech and browser permission | MANUAL |

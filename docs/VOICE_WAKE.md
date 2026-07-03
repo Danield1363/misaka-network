@@ -1,51 +1,65 @@
-# Voice Wake Word (Experimental)
+# Voice Wake — Misaka v0.3.6
 
-Misaka supports voice activation through the Web Speech API.
+## Modos de voz
 
-## How It Works
+A Misaka suporta três modos de reconhecimento de voz:
 
-1. User enables "Wake Word" in settings
-2. Dashboard starts listening via Web Speech API
-3. When "Misaka" is detected, visual feedback appears
-4. The following speech is captured as a command
-5. Command is sent to `/api/chat` for processing
-6. Response is spoken if auto-speak is enabled
+### 1. Web Speech Mode
+- Usado no Chrome/Edge quando `SpeechRecognition` existe.
+- Funciona no navegador e pode funcionar no Electron (não confiável).
+- Configuração: `pt-BR`, `continuous`, `interimResults`.
 
-## Wake Phrases
+### 2. Native Desktop Mode
+- Serviço Python local com Vosk.
+- Funciona no Electron quando Web Speech não está disponível.
+- Requer: Python 3, Vosk, modelo pt-BR em `desktop/voice/models/pt`.
 
-- "Misaka"
-- "Ei Misaka"
-- "Ok Misaka"
+### 3. Unavailable
+- Nenhum modo disponível.
+- Mostra erro claro.
 
-## States
+## Regra principal
 
-- `off` — Not listening
-- `listening` — Actively listening for wake word
-- `wake_detected` — Wake word detected, capturing command
-- `command_captured` — Command captured, sending to backend
-- `processing` — Processing command
-- `speaking` — Speaking response
+A Misaka **nunca** fingir que está ouvindo. Se nenhum modo funcionar, mostra erro.
 
-## Requirements
+## Escolha automática de modo
 
-- Web Speech API supported browser (Chrome, Edge, Safari)
-- Microphone permission granted
-- HTTPS or localhost
+O controller escolhe automaticamente:
 
-## Privacy
+```
+Web Speech disponível? → web_speech
+Web Speech indisponível + Native disponível? → native_desktop
+Nenhum disponível? → unavailable
+```
 
-- Only text transcription is sent to backend
-- No raw audio is transmitted
-- Voice processing happens locally in the browser
-- Can be disabled at any time
+## Ativação
 
-## Desktop Support
+1. Clique em "Ativar escuta Misaka".
+2. Se Web Speech: pede permissão do microfone.
+3. Se Native: inicia serviço Python.
+4. Status aparece na UI.
 
-The wake word feature works in the Electron desktop app through Chromium's Web Speech API implementation.
+## Comandos por voz
 
-## Limitations
+Todos os comandos usam o mesmo pipeline do chat:
 
-- Experimental feature
-- May not work in all environments
-- Background noise can affect accuracy
-- Requires user interaction to start (browser autoplay policy)
+```
+"Misaka, abra o YouTube"
+→ sendMessage("abra o YouTube", { source: "voice" })
+```
+
+## Erros comuns
+
+| Erro | Causa | Solução |
+|------|-------|---------|
+| Permissão negada | Microfone bloqueado | Permitir microfone no browser/Electron |
+| Modelo não encontrado | Vosk model ausente | Baixar modelo pt-BR |
+| Serviço Python falhou | Python não instalado | `pip install -r requirements.txt` |
+| Web Speech indisponível | Electron sem suporte | Usar modo nativo |
+
+## Segurança
+
+- Escuta desligada por padrão.
+- Áudio processado localmente.
+- Apenas texto/comando enviado.
+- Nenhum áudio bruto vai para o backend.

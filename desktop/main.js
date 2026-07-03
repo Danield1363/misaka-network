@@ -18,6 +18,7 @@ let mainWindow;
 let tray;
 let isQuitting = false;
 let notifiedAlertIds = new Set();
+let nativeVoiceBridge = null;
 
 const isPackaged = app.isPackaged;
 
@@ -563,6 +564,41 @@ function setupIPC() {
     const url = urls[provider] || urls.google;
     const result = await openExternalUrl(url);
     return { ...result, provider: provider || "google", query: query.trim() };
+  });
+
+  // --- Native Voice IPC ---
+  ipcMain.handle("native-voice:is-available", () => {
+    if (!nativeVoiceBridge) {
+      const { NativeVoiceBridge } = require("./voice/nativeVoiceBridge");
+      nativeVoiceBridge = new NativeVoiceBridge(mainWindow);
+    }
+    return nativeVoiceBridge.isAvailable();
+  });
+
+  ipcMain.handle("native-voice:start", (_event, modelPath) => {
+    if (!nativeVoiceBridge) {
+      const { NativeVoiceBridge } = require("./voice/nativeVoiceBridge");
+      nativeVoiceBridge = new NativeVoiceBridge(mainWindow);
+    }
+    return nativeVoiceBridge.start(modelPath);
+  });
+
+  ipcMain.handle("native-voice:stop", () => {
+    if (nativeVoiceBridge) return nativeVoiceBridge.stop();
+    return { success: true };
+  });
+
+  ipcMain.handle("native-voice:restart", (_event, modelPath) => {
+    if (!nativeVoiceBridge) {
+      const { NativeVoiceBridge } = require("./voice/nativeVoiceBridge");
+      nativeVoiceBridge = new NativeVoiceBridge(mainWindow);
+    }
+    return nativeVoiceBridge.restart(modelPath);
+  });
+
+  ipcMain.handle("native-voice:status", () => {
+    if (nativeVoiceBridge) return nativeVoiceBridge.status();
+    return { state: "stopped", lastError: "", running: false };
   });
 }
 

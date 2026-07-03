@@ -1,40 +1,63 @@
-# Voice Wake Native Plan
+# Voice Wake Native Plan — Misaka v0.3.6+
 
-O wake word atual tenta usar a Web Speech API no renderer:
+## Status atual
 
-- `window.SpeechRecognition`
-- `window.webkitSpeechRecognition`
+- **v0.3.5**: Web Speech + diagnóstico
+- **v0.3.6**: Hybrid Voice Wake (Web Speech + Native Desktop Fallback)
 
-Se essas APIs não existirem no Electron, a dashboard deve mostrar:
+## Implementado
 
-> Reconhecimento de voz não disponível neste Electron. Use Chrome/Edge por enquanto ou ative o futuro modo nativo de voz.
+### v0.3.6 — Hybrid Voice Wake
+- Modo Web Speech para Chrome/Edge
+- Modo Native Desktop com Python + Vosk
+- Escolha automática de modo
+- Bridge IPC entre Electron e Python
+- Serviço Python com wake phrase detection
+- UI com status do modo atual
 
-Ela não deve fingir que está ouvindo.
+## Próximos passos
 
-## Opções Futuras
+### Porcupine (wake word dedicado)
+- Picovoice Porcupine para detecção eficiente de "Misaka"
+- Baixo uso de CPU/memória
+- Funciona offline
+- Precisa de licença (free tier disponível)
 
-| Opção | Uso | Observações |
-|-------|-----|-------------|
-| Vosk local | Reconhecimento offline | Bom para comandos curtos em PT-BR se houver modelo local. |
-| Whisper local | Transcrição robusta | Mais pesado; ideal como serviço local com fila de áudio. |
-| Porcupine wake word | Detecção de palavra de ativação | Bom para detectar "Misaka" antes de transcrever o comando. |
-| Serviço Python local | Bridge de microfone + STT | Pode combinar Porcupine/Vosk/Whisper e expor HTTP/WebSocket local. |
-| Serviço Node local | Integração direta com Electron | Útil para controlar ciclo de vida junto ao app desktop. |
+### Whisper local
+- OpenAI Whisper para transcrição de alta qualidade
+- Mais pesado que Vosk
+- Melhor para comandos complexos
+- Pode rodar localmente ou via API
 
-## Arquitetura Recomendada
+### ElevenLabs (TTS premium)
+- Voz TTS de alta qualidade
+- Mais natural que SpeechSynthesis nativo
+- Requer API key
+- Pode ser opcional
 
-1. Electron inicializa um serviço local de voz.
-2. O serviço captura microfone com permissão explícita.
-3. O detector local aguarda "Misaka".
-4. Ao detectar, transcreve o comando por alguns segundos.
-5. O renderer recebe `{ source: "voice", command }`.
-6. A dashboard chama o mesmo pipeline do chat: `sendMessage(command, { source: "voice" })`.
-7. `metadata.client_action` continua sendo executado pelo desktop bridge.
+### Android Voice Wake
+- Reconhecimento nativo Android
+- Sem necessidade de Python
+- Usar SpeechRecognizer nativo
+- Integrar com o app Android futuro
 
-## Estado da UI
+## Arquitetura futura
 
-Enquanto o modo nativo não existir, a UI deve informar:
+```
+Usuário fala "Misaka"
+    ↓
+Porcupine detecta wake word (baixo custo)
+    ↓
+Whisper transcreve comando (alta qualidade)
+    ↓
+Comando enviado para pipeline do chat
+    ↓
+Misaka responde com ElevenLabs TTS
+```
 
-> Modo nativo de wake word ainda não configurado.
+## Prioridades
 
-O modo Web Speech pode continuar funcionando em Chrome/Edge e em versões do Electron que exponham `SpeechRecognition`.
+1. **Porcupine** — wake word mais eficiente
+2. **Whisper** — transcrição melhor
+3. **ElevenLabs** — voz mais natural
+4. **Android** — suporte nativo mobile

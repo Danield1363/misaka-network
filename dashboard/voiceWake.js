@@ -9,6 +9,7 @@
   const STATES = {
     unavailable: "unavailable",
     off: "off",
+    checking: "checking",
     permission_needed: "permission_needed",
     listening_for_wake: "listening_for_wake",
     wake_detected: "wake_detected",
@@ -21,6 +22,7 @@
   const STATE_LABELS = {
     unavailable: "Wake: indisponivel",
     off: "Wake: desligado",
+    checking: "Wake: verificando modos...",
     permission_needed: "Wake: permissao necessaria",
     listening_for_wake: 'Wake: ouvindo por "Misaka"',
     wake_detected: "Wake: palavra detectada",
@@ -69,6 +71,29 @@
     return raw.replace(rawPattern, "").trim();
   }
 
+  function isWebSpeechSupported(win) {
+    const w = win || root;
+    return Boolean(w.SpeechRecognition || w.webkitSpeechRecognition);
+  }
+
+  function isNativeDesktopSupported(win) {
+    const w = win || root;
+    const bridge = w.misakaDesktop;
+    return Boolean(
+      bridge &&
+        bridge.isAvailable &&
+        typeof bridge.nativeVoiceIsAvailable === "function" &&
+        typeof bridge.nativeVoiceStart === "function" &&
+        typeof bridge.nativeVoiceStop === "function",
+    );
+  }
+
+  function chooseVoiceWakeMode(win) {
+    if (isWebSpeechSupported(win)) return "web_speech";
+    if (isNativeDesktopSupported(win)) return "native_desktop";
+    return "unavailable";
+  }
+
   class VoiceWakeController {
     constructor(options = {}) {
       this.elements = options.elements || {};
@@ -99,6 +124,8 @@
       this.lastTranscript = "";
       this.lastCommand = "";
       this.lastError = "";
+      this.voiceMode = "unavailable";
+      this._nativeCleanups = [];
 
       this.settings = {
         wake_phrases: DEFAULT_WAKE_PHRASES.slice(),
@@ -109,12 +136,16 @@
       };
     }
 
+    // --- Initialization ---
+
     init() {
       this.loadSettings();
-      if (!this.isSupported()) {
+      this.voiceMode = chooseVoiceWakeMode();
+
+      if (this.voiceMode === "unavailable") {
         this.enabled = false;
         this.persistSettings();
-        this.updateState(STATES.unavailable, this.getUnsupportedMessage());
+        this.updateState(STATES.unavailable, this._getUnavailableMessage());
         return false;
       }
 
@@ -125,21 +156,78 @@
       return true;
     }
 
-    isSupported() {
-      return Boolean(root.SpeechRecognition || root.webkitSpeechRecognition);
+    chooseMode() {
+      return chooseVoiceWakeMode();
     }
 
+    isWebSpeechSupported() {
+      return isWebSpeechSupported();
+    }
+
+    isNativeDesktopSupported() {
+      return isNativeDesktopSupported();
+    }
+
+    // --- Start / Stop ---
+
     start() {
-      if (this.active || this.starting) {
-        return true;
+      if (this.active || this.starting) return true;
+
+      this.voiceMode = chooseVoiceWakeMode();
+
+      if (this.voiceMode === "web_speech") {
+        return this.startWebSpeech();
+      }
+      if (this.voiceMode === "native_desktop") {
+        return this.startNativeDesktop();
       }
 
-      if (!this.isSupported()) {
-        this.enabled = false;
-        this.active = false;
-        this.starting = false;
-        this.persistSettings();
-        this.updateState(STATES.unavailable, this.getUnsupportedMessage());
+      this.updateState(STATES.unavailable, this._getUnavailableMessage());
+      return false;
+    }
+
+    stop() {
+      this.enabled = false;
+      this.active = false;
+      this.starting = false;
+      this.stoppedByUser = true;
+      this.waitingForCommand = false;
+      this.clearRestartTimer();
+      this.clearCommandTimer();
+
+      if (this.voiceMode === "web_speech") {
+        this.stopRecognitionOnly();
+      } else if (this.voiceMode === "native_desktop") {
+        this.stopNativeDesktop();
+      }
+
+      this.persistSettings();
+      this.updateState(STATES.off);
+    }
+
+    restart() {
+      if (this.voiceMode === "web_speech") {
+        this.stopRecognitionOnly();
+      } else if (this.voiceMode === "native_desktop") {
+        this.stopNativeDesktop();
+      }
+      this.active = false;
+      this.starting = false;
+      if (!this.enabled) return false;
+      return this.start();
+    }
+
+    setEnabled(enabled) {
+      if (enabled) return this.start();
+      this.stop();
+      return true;
+    }
+
+    // --- Web Speech Mode ---
+
+    startWebSpeech() {
+      if (!isWebSpeechSupported()) {
+        this.updateState(STATES.unavailable, "Web Speech nao disponivel.");
         return false;
       }
 
@@ -164,7 +252,7 @@
         this.active = true;
         this.starting = false;
         this.persistSettings();
-        this.updateState(STATES.listening_for_wake);
+        this.updateState(STATES.listening_for_wake, "Wake: usando Web Speech");
         return true;
       } catch (error) {
         this.enabled = false;
@@ -179,31 +267,17 @@
       }
     }
 
-    stop() {
-      this.enabled = false;
+    stopRecognitionOnly() {
+      if (!this.recognition) return;
+      this.recognition.onend = null;
+      try {
+        this.recognition.stop();
+      } catch (error) {
+        this.debug(`recognition.stop ignored: ${error.message}`);
+      }
+      this.recognition = null;
       this.active = false;
       this.starting = false;
-      this.stoppedByUser = true;
-      this.waitingForCommand = false;
-      this.clearRestartTimer();
-      this.clearCommandTimer();
-      this.stopRecognitionOnly();
-      this.persistSettings();
-      this.updateState(STATES.off);
-    }
-
-    restart() {
-      this.stopRecognitionOnly();
-      this.active = false;
-      this.starting = false;
-      if (!this.enabled) return false;
-      return this.start();
-    }
-
-    setEnabled(enabled) {
-      if (enabled) return this.start();
-      this.stop();
-      return true;
     }
 
     handleResult(event) {
@@ -264,6 +338,130 @@
         this.scheduleRestart();
       }
     }
+
+    // --- Native Desktop Mode ---
+
+    startNativeDesktop() {
+      const bridge = root.misakaDesktop;
+      if (
+        !bridge ||
+        !bridge.isAvailable ||
+        typeof bridge.nativeVoiceStart !== "function"
+      ) {
+        this.updateState(
+          STATES.unavailable,
+          "Modo nativo de voz nao esta disponivel neste app.",
+        );
+        return false;
+      }
+
+      this._cleanupNativeListeners();
+      this.starting = true;
+      this.stoppedByUser = false;
+
+      const cleanupTranscript = bridge.onNativeVoiceTranscript((data) => {
+        const text = data.text || "";
+        this.lastTranscript = text;
+        this.updateTranscript(text);
+        this.emitTranscript(text, true);
+        this.processTranscript(text);
+      });
+
+      const cleanupCommand = bridge.onNativeVoiceCommand((data) => {
+        const command = data.command || "";
+        if (command) {
+          this.sendVoiceCommand(command);
+        }
+      });
+
+      const cleanupStatus = bridge.onNativeVoiceStatus((data) => {
+        const nativeState = data.state || "unknown";
+        if (nativeState === "listening_for_wake") {
+          this.active = true;
+          this.starting = false;
+          this.updateState(STATES.listening_for_wake, "Wake: usando modo nativo");
+        } else if (nativeState === "wake_detected") {
+          this.updateState(STATES.wake_detected);
+        } else if (nativeState === "stopped") {
+          this.active = false;
+          this.starting = false;
+          if (this.enabled) this.updateState(STATES.off);
+        }
+      });
+
+      const cleanupError = bridge.onNativeVoiceError((data) => {
+        this.lastError = data.message || data.error || "Erro nativo";
+        this.active = false;
+        this.starting = false;
+        this.updateState(STATES.error, this.lastError);
+        this.emitError("native", this.lastError);
+      });
+
+      this._nativeCleanups = [
+        cleanupTranscript,
+        cleanupCommand,
+        cleanupStatus,
+        cleanupError,
+      ];
+
+      bridge
+        .nativeVoiceStart()
+        .then((result) => {
+          if (result && result.success) {
+            this.enabled = true;
+            this.active = true;
+            this.starting = false;
+            this.persistSettings();
+            this.updateState(
+              STATES.listening_for_wake,
+              "Wake: usando modo nativo",
+            );
+          } else {
+            this.enabled = false;
+            this.active = false;
+            this.starting = false;
+            this.persistSettings();
+            const msg =
+              (result && result.error) || "Falha ao iniciar voz nativa";
+            this.lastError = msg;
+            this.updateState(STATES.error, msg);
+            this.emitError("native_start", msg);
+          }
+        })
+        .catch((err) => {
+          this.enabled = false;
+          this.active = false;
+          this.starting = false;
+          this.persistSettings();
+          const msg = `Erro ao iniciar voz nativa: ${err.message}`;
+          this.lastError = msg;
+          this.updateState(STATES.error, msg);
+          this.emitError("native_start", msg);
+        });
+
+      return true;
+    }
+
+    stopNativeDesktop() {
+      const bridge = root.misakaDesktop;
+      if (bridge && typeof bridge.nativeVoiceStop === "function") {
+        bridge.nativeVoiceStop().catch(() => {});
+      }
+      this._cleanupNativeListeners();
+      this.active = false;
+      this.starting = false;
+    }
+
+    _cleanupNativeListeners() {
+      for (const cleanup of this._nativeCleanups) {
+        if (typeof cleanup === "function") {
+          try { cleanup(); } catch { /* ignore */ }
+        }
+      }
+      this._nativeCleanups = [];
+    }
+
+    // --- Shared logic ---
 
     processTranscript(text) {
       const cleanText = String(text || "").trim();
@@ -329,6 +527,8 @@
         });
     }
 
+    // --- State / UI ---
+
     updateState(state, message = "") {
       this.state = state;
       const label = message || STATE_LABELS[state] || state;
@@ -347,6 +547,7 @@
           ? "Desativar escuta"
           : "Ativar escuta Misaka";
         this.elements.button.dataset.state = state;
+        this.elements.button.dataset.mode = this.voiceMode;
         this.elements.button.title = label;
         this.elements.button.classList.toggle("active", listening);
       }
@@ -358,7 +559,7 @@
       }
 
       if (this.onStateChange) this.onStateChange(state, label);
-      this.debug(`state=${state} message=${label}`);
+      this.debug(`state=${state} mode=${this.voiceMode} message=${label}`);
     }
 
     dispose() {
@@ -372,6 +573,8 @@
       this.onDebug = null;
       this.sendCommandCallback = null;
     }
+
+    // --- Settings ---
 
     loadSettings() {
       this.enabled =
@@ -419,6 +622,8 @@
       );
     }
 
+    // --- Helpers ---
+
     errorMessageFor(error) {
       const messages = {
         "not-allowed": "Permissao de microfone negada.",
@@ -431,6 +636,16 @@
         "language-not-supported": "Idioma pt-BR nao suportado neste ambiente.",
       };
       return messages[error] || `Erro no reconhecimento de voz: ${error}`;
+    }
+
+    _getUnavailableMessage() {
+      if (root.misakaDesktop && root.misakaDesktop.isAvailable) {
+        if (typeof root.misakaDesktop.nativeVoiceIsAvailable === "function") {
+          return "Nenhum modo de reconhecimento de voz esta disponivel.";
+        }
+        return "Web Speech nao disponivel neste Electron. Modo nativo nao configurado.";
+      }
+      return "Nenhum modo de reconhecimento de voz esta disponivel.";
     }
 
     updateTranscript(text) {
@@ -473,26 +688,6 @@
       }
     }
 
-    stopRecognitionOnly() {
-      if (!this.recognition) return;
-      this.recognition.onend = null;
-      try {
-        this.recognition.stop();
-      } catch (error) {
-        this.debug(`recognition.stop ignored: ${error.message}`);
-      }
-      this.recognition = null;
-      this.active = false;
-      this.starting = false;
-    }
-
-    getUnsupportedMessage() {
-      if (root.misakaDesktop && root.misakaDesktop.isAvailable) {
-        return "Reconhecimento de voz nao disponivel neste Electron. Use Chrome/Edge por enquanto ou ative o futuro modo nativo de voz.\nModo nativo de wake word ainda nao configurado.";
-      }
-      return "Reconhecimento de voz nao disponivel neste ambiente.";
-    }
-
     emitTranscript(transcript, isFinal) {
       if (this.onTranscript) this.onTranscript(transcript, isFinal);
     }
@@ -518,6 +713,9 @@
   root.VoiceWakeUtils = {
     normalizeVoiceText,
     extractCommandFromWakePhrase,
+    chooseVoiceWakeMode,
+    isWebSpeechSupported,
+    isNativeDesktopSupported,
     DEFAULT_WAKE_PHRASES,
     STATES,
   };
@@ -527,6 +725,9 @@
       VoiceWakeController,
       normalizeVoiceText,
       extractCommandFromWakePhrase,
+      chooseVoiceWakeMode,
+      isWebSpeechSupported,
+      isNativeDesktopSupported,
       DEFAULT_WAKE_PHRASES,
       STATES,
     };

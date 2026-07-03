@@ -51,4 +51,45 @@ contextBridge.exposeInMainWorld("misakaDesktop", {
     ipcRenderer.on("wake-word:set-enabled", listener);
     return () => ipcRenderer.removeListener("wake-word:set-enabled", listener);
   },
+
+  // --- Native Voice ---
+  nativeVoiceIsAvailable: () => invoke("native-voice:is-available"),
+
+  nativeVoiceStart: (modelPath) =>
+    invoke("native-voice:start", typeof modelPath === "string" ? modelPath : undefined),
+
+  nativeVoiceStop: () => invoke("native-voice:stop"),
+
+  nativeVoiceRestart: (modelPath) =>
+    invoke("native-voice:restart", typeof modelPath === "string" ? modelPath : undefined),
+
+  nativeVoiceStatus: () => invoke("native-voice:status"),
+
+  onNativeVoiceTranscript: (callback) => {
+    if (typeof callback !== "function") return () => {};
+    const listener = (_event, data) => callback(data);
+    ipcRenderer.on("native-voice:transcript", listener);
+    return () => ipcRenderer.removeListener("native-voice:transcript", listener);
+  },
+
+  onNativeVoiceCommand: (callback) => {
+    if (typeof callback !== "function") return () => {};
+    const listener = (_event, data) => callback(data);
+    ipcRenderer.on("native-voice:command", listener);
+    return () => ipcRenderer.removeListener("native-voice:command", listener);
+  },
+
+  onNativeVoiceStatus: (callback) => {
+    if (typeof callback !== "function") return () => {};
+    const listener = (_event, data) => callback(data);
+    ipcRenderer.on("native-voice:status", listener);
+    return () => ipcRenderer.removeListener("native-voice:status", listener);
+  },
+
+  onNativeVoiceError: (callback) => {
+    if (typeof callback !== "function") return () => {};
+    const listener = (_event, data) => callback(data);
+    ipcRenderer.on("native-voice:error", listener);
+    return () => ipcRenderer.removeListener("native-voice:error", listener);
+  },
 });

@@ -1047,6 +1047,16 @@ function initVoiceWakeController() {
       }
     });
   }
+
+  if (window.misakaDesktop && window.misakaDesktop.onNativeVoiceCommand) {
+    window.misakaDesktop.onNativeVoiceCommand((data) => {
+      const command = data && data.command;
+      if (command) {
+        console.log("[Misaka] native voice command:", command);
+        sendMessage(command, { source: "voice" });
+      }
+    });
+  }
 }
 // ==================== Confirmation Modal ====================
 function showConfirmation(title, message, payload) {
