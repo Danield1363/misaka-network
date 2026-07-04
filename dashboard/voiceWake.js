@@ -86,6 +86,12 @@
     }
   }
 
+  function voiceDiagnosticLog(...args) {
+    if (root.console && typeof root.console.log === "function") {
+      root.console.log("[Voice]", ...args);
+    }
+  }
+
   function normalizeVoiceText(text) {
     return String(text || "")
       .normalize("NFD")
@@ -797,7 +803,11 @@
 
     async processVoiceText(text, transcription = null) {
       const raw = String(text || "").trim();
-      if (!raw) return { executed: false, reason: "empty" };
+      voiceDiagnosticLog("transcript text:", raw);
+      if (!raw) {
+        voiceDiagnosticLog("classified command:", "");
+        return { executed: false, reason: "no_command" };
+      }
       this.lastTranscript = raw;
       this.updateTranscript(raw);
       this.emitTranscript(raw, true);
@@ -833,9 +843,11 @@
 
       if (!command) {
         this.updateState(STATES.listening, "Ouvindo comandos...");
+        voiceDiagnosticLog("classified command:", "");
         return { executed: false, reason: "no_command" };
       }
 
+      voiceDiagnosticLog("classified command:", command);
       return this.sendVoiceCommand(command, transcription);
     }
 
@@ -1311,6 +1323,9 @@
     modeLabel(status = this.voiceStatus) {
       if (this.inputMode === VOICE_INPUT_MODES.cloud) {
         const provider = status?.provider ? ` (${status.provider})` : "";
+        if (status?.provider === "mock" && status?.mock_transcript) {
+          return `Modo: Cloud Voice${provider} - mock: ${status.mock_transcript}`;
+        }
         return `Modo: Cloud Voice${provider}`;
       }
       if (this.inputMode === VOICE_INPUT_MODES.webSpeech) {

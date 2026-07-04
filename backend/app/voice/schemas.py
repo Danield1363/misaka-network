@@ -9,6 +9,8 @@ class VoiceStatus(BaseModel):
     max_audio_seconds: int
     accepted_formats: list[str]
     last_error: str | None = None
+    mock_transcript: str | None = None
+    mock_repeat: bool | None = None
 
 
 class VoiceTranscriptionResponse(BaseModel):
@@ -20,4 +22,3 @@ class VoiceTranscriptionResponse(BaseModel):
     confidence: float | None = None
     error: str | None = None
     safe_message: str | None = None
-

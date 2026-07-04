@@ -48,12 +48,16 @@ class CommandRouter:
         message: str,
         context: dict[str, Any] | None = None,
     ) -> dict[str, Any] | None:
+        logger.info("[CommandRouter] input: %s", message[:160])
         power_result = self._route_power_action(message)
         if power_result is not None:
+            logger.info("[CommandRouter] matched: power_action")
+            logger.info("[CommandRouter] client_action: %s", power_result["client_action"])
             return power_result
 
         dangerous_result = self._route_dangerous_command(message)
         if dangerous_result is not None:
+            logger.info("[CommandRouter] matched: dangerous_desktop_action")
             return dangerous_result
 
         desktop_cmd = detect_desktop_command(message)
@@ -63,6 +67,12 @@ class CommandRouter:
                 desktop_cmd.app,
                 desktop_cmd.confidence,
             )
+            client_action = {
+                "type": "open_app",
+                "target": desktop_cmd.target_device,
+                "app": desktop_cmd.app,
+            }
+            logger.info("[CommandRouter] client_action: %s", client_action)
             return {
                 "type": "command_executed",
                 "intent": desktop_cmd.intent,
@@ -71,11 +81,7 @@ class CommandRouter:
                 "success": True,
                 "data": {"app": desktop_cmd.app},
                 "response_message": desktop_cmd.response_message,
-                "client_action": {
-                    "type": "open_app",
-                    "target": desktop_cmd.target_device,
-                    "app": desktop_cmd.app,
-                },
+                "client_action": client_action,
                 "metadata": {
                     "response_mode": "action_short",
                     "ui_effect": "none",
@@ -95,6 +101,7 @@ class CommandRouter:
                 web_result.action_type,
                 web_result.url,
             )
+            logger.info("[CommandRouter] client_action: %s", client_action)
             return {
                 "type": "command_executed",
                 "intent": "web_action",
@@ -239,12 +246,17 @@ class CommandRouter:
     def _build_client_action(
         self, intent_name: str, parameters: dict, message: str
     ) -> dict[str, Any] | None:
-        if intent_name in ("open_youtube", "open_url_site"):
-            url = (
-                parameters.get("url")
-                or extract_url(message)
-                or "https://www.youtube.com"
-            )
+        if intent_name == "open_youtube":
+            return {
+                "type": "open_url",
+                "target": "desktop",
+                "url": "https://www.youtube.com",
+            }
+
+        if intent_name == "open_url_site":
+            url = parameters.get("url") or extract_url(message)
+            if not url:
+                return None
             return {"type": "open_url", "target": "desktop", "url": url}
 
         if intent_name == "open_app":
@@ -279,36 +291,23 @@ class CommandRouter:
         return None
 
     def _build_web_client_action(self, web_result: Any) -> dict[str, Any]:
-        if web_result.action_type in {
-            "search_google",
-            "open_youtube_search",
-            "search_github",
-            "search_reddit",
-            "search_wikipedia",
-            "search_site",
-            "search_web",
-        }:
-            provider_map = {
-                "search_google": "google",
-                "open_youtube_search": "youtube",
-                "search_github": "github",
-                "search_reddit": "reddit",
-                "search_wikipedia": "google",
-                "search_site": web_result.site or "google",
-                "search_web": "google",
-            }
-            return {
-                "type": "search_web",
-                "target": web_result.target,
-                "provider": provider_map.get(web_result.action_type, "google"),
-                "query": web_result.query,
-                "url": web_result.url,
-                "source": "web_action_engine",
-            }
-
-        return {
+        provider_map = {
+            "search_google": "google",
+            "open_youtube_search": "youtube",
+            "search_github": "github",
+            "search_reddit": "reddit",
+            "search_wikipedia": "google",
+            "search_site": web_result.site or "google",
+            "search_web": "google",
+        }
+        action = {
             "type": "open_url",
             "target": web_result.target,
             "url": web_result.url,
             "source": "web_action_engine",
         }
+        if web_result.query:
+            action["query"] = web_result.query
+        if web_result.action_type in provider_map:
+            action["provider"] = provider_map.get(web_result.action_type, "google")
+        return action

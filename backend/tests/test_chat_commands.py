@@ -1,6 +1,7 @@
 import pytest
 from fastapi.testclient import TestClient
 from app import create_app
+from app.core.config import get_settings
 
 
 @pytest.fixture
@@ -181,9 +182,11 @@ def test_chat_search_google_returns_search_web_action(client):
     data = response.json()
     action = data["metadata"]["client_action"]
     assert data["agent"] == "command_router"
-    assert action["type"] == "search_web"
+    assert action["type"] == "open_url"
     assert action["provider"] == "google"
     assert action["query"] == "wake on lan"
+    assert "google.com/search" in action["url"]
+    assert "wake+on+lan" in action["url"]
 
 
 def test_chat_search_youtube_returns_search_web_action(client):
@@ -192,9 +195,11 @@ def test_chat_search_youtube_returns_search_web_action(client):
     data = response.json()
     action = data["metadata"]["client_action"]
     assert data["agent"] == "command_router"
-    assert action["type"] == "search_web"
+    assert action["type"] == "open_url"
     assert action["provider"] == "youtube"
     assert action["query"] == "alanzoka"
+    assert "youtube.com/results" in action["url"]
+    assert "alanzoka" in action["url"]
 
 
 def test_chat_open_youtube_channel_with_open_verb(client):
@@ -264,9 +269,11 @@ def test_chat_search_youtube_with_procurar(client):
     data = response.json()
     action = data["metadata"]["client_action"]
     assert data["agent"] == "command_router"
-    assert action["type"] == "search_web"
+    assert action["type"] == "open_url"
     assert action["provider"] == "youtube"
     assert action["query"] == "black wings"
+    assert "youtube.com/results" in action["url"]
+    assert "black+wings" in action["url"]
 
 
 @pytest.mark.parametrize(
@@ -284,10 +291,47 @@ def test_chat_search_sites_do_not_fall_to_llm(client, message, provider, needle)
     data = response.json()
     action = data["metadata"]["client_action"]
     assert data["agent"] == "command_router"
-    assert action["type"] in ("search_web", "open_url")
+    assert action["type"] == "open_url"
+    assert action["provider"] == provider
     assert needle.split()[0] in (action.get("query", "") + action.get("url", ""))
-    if action["type"] == "search_web":
-        assert action["provider"] == provider
+
+
+def test_chat_direct_commands_ignore_voice_mock_transcript(monkeypatch):
+    monkeypatch.setenv("VOICE_PROVIDER", "mock")
+    monkeypatch.setenv("VOICE_MOCK_TRANSCRIPT", "abrir youtube")
+    get_settings.cache_clear()
+    app = create_app()
+    with TestClient(app) as test_client:
+        cases = [
+            ("abrir youtube", "open_url", None, "youtube.com"),
+            ("abrir notepad", "open_app", "notepad", None),
+            ("abra explorer", "open_app", "explorer", None),
+            ("abra calculadora", "open_app", "calculator", None),
+            ("pesquise wake on lan no google", "open_url", None, "google.com/search"),
+            (
+                "abrir canal do alanzoka no youtube",
+                "open_url",
+                None,
+                "youtube.com/results",
+            ),
+        ]
+
+        for message, expected_type, expected_app, expected_url in cases:
+            response = test_client.post("/api/chat", json={"message": message})
+            assert response.status_code == 200
+            data = response.json()
+            action = data["metadata"]["client_action"]
+            assert data["agent"] == "command_router"
+            assert action["type"] == expected_type
+            if expected_app:
+                assert action["app"] == expected_app
+            if expected_url:
+                assert expected_url in action["url"]
+            if "alanzoka" in message:
+                assert "alanzoka" in action["url"]
+            if "wake on lan" in message:
+                assert action["query"] == "wake on lan"
+    get_settings.cache_clear()
 
 
 def test_chat_power_action_shutdown_returns_client_action(client):

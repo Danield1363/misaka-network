@@ -212,16 +212,33 @@ async function runCloudVoiceTests() {
   assert.deepStrictEqual(commands, ["abrir youtube"]);
   assert.strictEqual(ignoredCommands.length, 2);
 
+  const nextCommand = await controller.processVoiceText("abrir notepad");
+  assert.strictEqual(nextCommand.executed, true);
+  assert.deepStrictEqual(commands, ["abrir youtube", "abrir notepad"]);
+
+  const emptyCommand = await controller.processVoiceText("");
+  assert.strictEqual(emptyCommand.executed, false);
+  assert.strictEqual(emptyCommand.reason, "no_command");
+  assert.deepStrictEqual(commands, ["abrir youtube", "abrir notepad"]);
+
   controller.lastExecutedVoiceCommandAt = Date.now() - 16000;
   const afterCooldown = await controller.processVoiceText("abrir youtube");
   assert.strictEqual(afterCooldown.executed, true);
-  assert.deepStrictEqual(commands, ["abrir youtube", "abrir youtube"]);
+  assert.deepStrictEqual(commands, [
+    "abrir youtube",
+    "abrir notepad",
+    "abrir youtube",
+  ]);
 
   controller.processingCommand = true;
   const whileProcessing = await controller.processVoiceText("abrir discord");
   assert.strictEqual(whileProcessing.executed, false);
   assert.strictEqual(whileProcessing.reason, "processing");
-  assert.deepStrictEqual(commands, ["abrir youtube", "abrir youtube"]);
+  assert.deepStrictEqual(commands, [
+    "abrir youtube",
+    "abrir notepad",
+    "abrir youtube",
+  ]);
   controller.processingCommand = false;
 
   let resolveCommand;

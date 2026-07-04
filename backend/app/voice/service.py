@@ -40,6 +40,11 @@ class VoiceService:
         provider_name = self._provider_name()
         ready = self.settings.VOICE_ENABLED and self._is_provider_ready(provider_name)
         provider = provider_name if ready or provider_name in {"mock", "openai"} else "unconfigured"
+        mock_transcript = None
+        mock_repeat = None
+        if provider_name == "mock":
+            mock_transcript = self.settings.VOICE_MOCK_TRANSCRIPT.strip() or "abrir youtube"
+            mock_repeat = self.settings.VOICE_MOCK_REPEAT
         return VoiceStatus(
             enabled=self.settings.VOICE_ENABLED,
             provider=provider,
@@ -48,6 +53,8 @@ class VoiceService:
             max_audio_seconds=self.settings.VOICE_MAX_AUDIO_SECONDS,
             accepted_formats=ACCEPTED_FORMATS,
             last_error=self.last_error,
+            mock_transcript=mock_transcript,
+            mock_repeat=mock_repeat,
         )
 
     async def transcribe_upload(

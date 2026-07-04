@@ -141,3 +141,23 @@ Testes manuais com microfone, Vivaldi e clique/fala na UI: NOT RUN nesta rodada,
 | Apps configurados | Sem confirmacao e sem shell arbitrario | Implementado via `apps.json`/`appAliases.json` e `spawn(..., shell=false)` | PASS |
 | Power actions | Existem como `power_action` e ficam desativadas por padrao | Coberto por backend e configuracao desktop; execucao real nao testada por seguranca | PASS |
 | Comandos manuais reais no Electron | notepad/explorer/calculadora/discord/vscode/youtube/canal Alanzoka | Nao executado interativamente nesta rodada | NOT RUN |
+
+## Hotfix Voice Mock Isolation & Stale Client Actions - 2026-07-03
+
+| Teste | Resultado esperado | Resultado obtido | Status |
+| --- | --- | --- | --- |
+| `node --check dashboard/app.js` | Sem SyntaxError | Sem erro | PASS |
+| `node --check dashboard/voiceWake.js` | Sem SyntaxError | Sem erro | PASS |
+| `node --check dashboard/voiceWake.test.js` | Sem SyntaxError | Sem erro | PASS |
+| `node --check desktop/main.js` | Sem SyntaxError | Sem erro | PASS |
+| `node --check desktop/preload.js` | Sem SyntaxError | Sem erro | PASS |
+| `node dashboard/voiceWake.test.js` | Comando atual nao reutiliza comando anterior; vazio nao executa ultimo comando; duplicado entra em cooldown | `all voiceWake tests passed` | PASS |
+| `pytest` | Suite Python executa | Falhou por shim local quebrado do Hermes/Python 3.11 | FAIL (ambiente) |
+| `python -m pytest` | Suite Python executa | `335 passed, 1 warning in 10.24s` | PASS |
+| `/api/chat` com `VOICE_PROVIDER=mock` e `VOICE_MOCK_TRANSCRIPT=abrir youtube` | Comandos digitados usam o texto atual, nao o transcript mock | Coberto por `test_chat_direct_commands_ignore_voice_mock_transcript` | PASS |
+| `abrir notepad` | `client_action.open_app=notepad` | Coberto por teste Python | PASS |
+| `abra explorer` | `client_action.open_app=explorer` | Coberto por teste Python | PASS |
+| `abra calculadora` | `client_action.open_app=calculator` | Coberto por teste Python | PASS |
+| `pesquise wake on lan no google` | `client_action.open_url` para Google Search | Coberto por teste Python | PASS |
+| `abrir canal do alanzoka no youtube` | `client_action.open_url` para busca do YouTube com Alanzoka/canal | Coberto por teste Python | PASS |
+| Cloud Voice mock UI | Aviso mostra transcript fixo do mock | `VoiceStatus` expõe `mock_transcript`; dashboard mostra aviso no teste de transcricao e no rotulo do modo | PASS |

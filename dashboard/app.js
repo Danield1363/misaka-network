@@ -59,6 +59,9 @@ let currentAlertFilter = "all";
 let speaking = false;
 let currentUtterance = null;
 let pendingConfirmation = null;
+let currentClientAction = null;
+let pendingVoiceCommand = null;
+let currentVoiceCommand = null;
 let voiceWakeController = null;
 let compactMode = localStorage.getItem("misaka_compact_mode") === "true";
 let desktopNotificationsEnabled =
@@ -108,6 +111,12 @@ function showToast(message, type = "info", duration = 4000) {
     toast.classList.remove("toast-show");
     setTimeout(() => toast.remove(), 300);
   }, duration);
+}
+
+function diagnosticLog(scope, ...args) {
+  if (window.console && typeof window.console.log === "function") {
+    window.console.log(`[${scope}]`, ...args);
+  }
 }
 
 function setText(id, value) {
@@ -373,7 +382,11 @@ async function openUrlAction(url) {
   if (!targetUrl) return { success: false, error: "URL inválida." };
 
   if (window.misakaDesktop?.openUrl) {
-    return window.misakaDesktop.openUrl(targetUrl);
+    try {
+      return await window.misakaDesktop.openUrl(targetUrl);
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
   }
 
   try {
@@ -422,13 +435,24 @@ async function handleClientAction(action) {
     return actionResult(action, true, "");
   }
 
+  diagnosticLog("Action", "executing client_action:", action);
+
   if (action.type === "open_url") {
+    if (!action.url) {
+      const error = "Acao open_url sem URL.";
+      return actionResult(
+        action,
+        false,
+        `Nao consegui abrir a pagina. Motivo: ${error}, diz Misaka Misaka.`,
+        { error },
+      );
+    }
     const result = await openUrlAction(action.url);
     if (result?.success) {
       return actionResult(
         action,
         true,
-        "Página aberta, diz Misaka Misaka.",
+        "Pagina aberta, diz Misaka Misaka.",
         result,
       );
     }
@@ -436,25 +460,39 @@ async function handleClientAction(action) {
     return actionResult(
       action,
       false,
-      `Não consegui abrir a página. Motivo: ${error}, diz Misaka Misaka.`,
+      `Nao consegui abrir a pagina. Motivo: ${error}, diz Misaka Misaka.`,
       { error },
     );
   }
 
   if (action.type === "open_app") {
     const appName = action.app || action.name || "";
+    if (!appName) {
+      const error = "Acao open_app sem app.";
+      return actionResult(
+        action,
+        false,
+        `Nao consegui abrir aplicativo. Motivo: ${error}, diz Misaka Misaka.`,
+        { error },
+      );
+    }
     const appLabel = APP_DISPLAY_NAMES[appName] || appName || "aplicativo";
     if (!window.misakaDesktop?.openApp) {
       const error = "use o app desktop da Misaka para abrir aplicativos locais";
       return actionResult(
         action,
         false,
-        `Não consegui abrir ${appLabel}. Motivo: ${error}, diz Misaka Misaka.`,
+        `Nao consegui abrir ${appLabel}. Motivo: ${error}, diz Misaka Misaka.`,
         { error },
       );
     }
 
-    const result = await window.misakaDesktop.openApp(appName);
+    let result;
+    try {
+      result = await window.misakaDesktop.openApp(appName);
+    } catch (error) {
+      result = { success: false, error: error.message };
+    }
     if (result?.success) {
       return actionResult(
         action,
@@ -463,11 +501,11 @@ async function handleClientAction(action) {
         result,
       );
     }
-    const error = result?.error || "app não encontrado";
+    const error = result?.error || "app nao encontrado";
     return actionResult(
       action,
       false,
-      `Não consegui abrir ${appLabel}. Motivo: ${error}, diz Misaka Misaka.`,
+      `Nao consegui abrir ${appLabel}. Motivo: ${error}, diz Misaka Misaka.`,
       { error },
     );
   }
@@ -485,7 +523,12 @@ async function handleClientAction(action) {
       );
     }
 
-    const result = await window.misakaDesktop.powerAction(powerAction);
+    let result;
+    try {
+      result = await window.misakaDesktop.powerAction(powerAction);
+    } catch (error) {
+      result = { success: false, error: error.message };
+    }
     if (result?.success) {
       return actionResult(
         action,
@@ -508,13 +551,22 @@ async function handleClientAction(action) {
       action.type === "search_youtube"
         ? "youtube"
         : action.provider || "google";
+    if (!action.url && !action.query) {
+      const error = "Acao de pesquisa sem URL ou query.";
+      return actionResult(
+        action,
+        false,
+        `Nao consegui pesquisar. Motivo: ${error}, diz Misaka Misaka.`,
+        { error },
+      );
+    }
     const url = action.url || buildSearchUrl(action.query, provider);
     const result = await openUrlAction(url);
     if (result?.success) {
       return actionResult(
         action,
         true,
-        "Página aberta, diz Misaka Misaka.",
+        "Pagina aberta, diz Misaka Misaka.",
         result,
       );
     }
@@ -522,7 +574,7 @@ async function handleClientAction(action) {
     return actionResult(
       action,
       false,
-      `Não consegui pesquisar. Motivo: ${error}, diz Misaka Misaka.`,
+      `Nao consegui pesquisar. Motivo: ${error}, diz Misaka Misaka.`,
       { error },
     );
   }
@@ -535,12 +587,12 @@ async function handleClientAction(action) {
       return actionResult(
         action,
         result?.success,
-        body || "Notificação enviada.",
+        body || "Notificacao enviada.",
         result || {},
       );
     }
     showToast(body || title, "info");
-    return actionResult(action, true, body || "Notificação exibida.");
+    return actionResult(action, true, body || "Notificacao exibida.");
   }
 
   if (action.type === "set_hud") {
@@ -564,7 +616,7 @@ async function handleClientAction(action) {
     return actionResult(
       action,
       true,
-      "Configurações abertas, diz Misaka Misaka.",
+      "Configuracoes abertas, diz Misaka Misaka.",
     );
   }
 
@@ -609,7 +661,7 @@ async function handleClientAction(action) {
     return actionResult(action, true, "");
   }
 
-  return actionResult(action, false, "", { error: "Ação desconhecida." });
+  return actionResult(action, false, "", { error: "Acao desconhecida." });
 }
 
 function processUiEffect(effect) {
@@ -651,6 +703,9 @@ async function sendMessage(messageOverride = null, options = {}) {
       : messageInput?.value.trim() || "";
   if (!message) return null;
 
+  currentClientAction = null;
+  diagnosticLog("Chat", "sending message:", message, options);
+
   if (!options.silentUserMessage) addMessage(message, "user");
   if (!options.skipInputClear && !fromVoice && messageInput) {
     messageInput.value = "";
@@ -675,14 +730,22 @@ async function sendMessage(messageOverride = null, options = {}) {
     const data = await response.json();
     conversationId = data.conversation_id;
     processUiEffect(data.metadata?.ui_effect);
+    diagnosticLog("Chat", "response metadata:", data.metadata);
+    diagnosticLog(
+      "Chat",
+      "current client_action:",
+      data.metadata?.client_action || null,
+    );
 
     let assistantResponse = data.response || "";
     let clientActionResult = null;
     const clientAction = data.metadata?.client_action;
     if (clientAction) {
+      currentClientAction = clientAction;
       clientActionResult = await handleClientAction(clientAction);
       assistantResponse = clientActionResult.message || assistantResponse;
     }
+    currentClientAction = null;
 
     if (assistantResponse) {
       addMessage(assistantResponse, "assistant");
@@ -705,6 +768,7 @@ async function sendMessage(messageOverride = null, options = {}) {
     setCoreState(null);
     return { success: false, error: error.message };
   } finally {
+    currentClientAction = null;
     typingIndicator?.classList.remove("active");
     if (btnSend) btnSend.disabled = false;
     messageInput?.focus();
@@ -974,9 +1038,16 @@ function updateWakeCommand(command) {
 
 async function sendVoiceCommand(command, metadata = {}) {
   updateWakeCommand(command);
-  return await sendMessage(command, {
-    source: metadata?.source || "voice",
-  });
+  pendingVoiceCommand = command;
+  currentVoiceCommand = command;
+  try {
+    return await sendMessage(command, {
+      source: metadata?.source || "voice",
+    });
+  } finally {
+    pendingVoiceCommand = null;
+    currentVoiceCommand = null;
+  }
 }
 
 async function setWakeWordEnabled(enabled) {
@@ -1022,6 +1093,14 @@ async function testTranscription() {
       result.data.last_error ||
         "Transcrição de voz não configurada no backend.",
       "warning",
+    );
+    return;
+  }
+  if (result.data.provider === "mock" && result.data.mock_transcript) {
+    showToast(
+      `Cloud Voice esta em modo mock. A transcricao sempre retorna: ${result.data.mock_transcript}.`,
+      "warning",
+      7000,
     );
     return;
   }
