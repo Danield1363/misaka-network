@@ -169,6 +169,7 @@ async function runCloudVoiceTests() {
   assert.strictEqual(chooseVoiceWakeMode(), "cloud_voice");
 
   const commands = [];
+  const ignoredCommands = [];
   const controller = new VoiceWakeController({
     storage: fakeStorage(),
     callbacks: {
@@ -176,10 +177,14 @@ async function runCloudVoiceTests() {
         commands.push(command);
         return Promise.resolve({ success: true });
       },
+      onCommandIgnored: (command, reason) => {
+        ignoredCommands.push({ command, reason });
+      },
     },
   });
   await controller.init();
   controller.chunkMs = 10;
+  controller.commandCooldownMs = 15000;
   controller.stream = {
     getTracks: () => [{ stop: () => {} }],
   };
@@ -195,18 +200,37 @@ async function runCloudVoiceTests() {
 
   assert.strictEqual(result.success, true);
   assert.strictEqual(result.text, "abrir youtube");
-  await controller.processVoiceText(result.text);
+  const firstCommand = await controller.processVoiceText(result.text);
+  assert.strictEqual(firstCommand.executed, true);
   assert.deepStrictEqual(commands, ["abrir youtube"]);
 
-  controller.processVoiceText("abrir youtube");
-  controller.processVoiceText("abrir youtube");
+  const duplicateOne = await controller.processVoiceText("abrir youtube");
+  const duplicateTwo = await controller.processVoiceText("abrir youtube");
+  assert.strictEqual(duplicateOne.executed, false);
+  assert.strictEqual(duplicateOne.reason, "duplicate_cooldown");
+  assert.strictEqual(duplicateTwo.executed, false);
   assert.deepStrictEqual(commands, ["abrir youtube"]);
+  assert.strictEqual(ignoredCommands.length, 2);
+
+  controller.lastExecutedVoiceCommandAt = Date.now() - 16000;
+  const afterCooldown = await controller.processVoiceText("abrir youtube");
+  assert.strictEqual(afterCooldown.executed, true);
+  assert.deepStrictEqual(commands, ["abrir youtube", "abrir youtube"]);
+
+  controller.processingCommand = true;
+  const whileProcessing = await controller.processVoiceText("abrir discord");
+  assert.strictEqual(whileProcessing.executed, false);
+  assert.strictEqual(whileProcessing.reason, "processing");
+  assert.deepStrictEqual(commands, ["abrir youtube", "abrir youtube"]);
+  controller.processingCommand = false;
 
   controller.stop();
   assert.strictEqual(controller.listeningLoopActive, false);
   assert.strictEqual(controller.recording, false);
 
   const loopCommands = [];
+  const loopIgnoredCommands = [];
+  const debugMessages = [];
   const loopController = new VoiceWakeController({
     storage: fakeStorage(),
     callbacks: {
@@ -214,17 +238,38 @@ async function runCloudVoiceTests() {
         loopCommands.push(command);
         return Promise.resolve({ success: true });
       },
+      onCommandIgnored: (command, reason) => {
+        loopIgnoredCommands.push({ command, reason });
+      },
+      onDebug: (message) => {
+        debugMessages.push(message);
+      },
     },
   });
   loopController.chunkMs = 10;
+  loopController.postCommandPauseMs = 20;
+  loopController.commandCooldownMs = 15000;
   await loopController.init();
   const startResult = await loopController.start();
   assert.strictEqual(startResult.success, true);
-  await new Promise((resolve) => setTimeout(resolve, 100));
+  loopController.startListeningLoop();
+  await new Promise((resolve) => setTimeout(resolve, 120));
   assert.deepStrictEqual(loopCommands, ["abrir youtube"]);
+  assert.ok(
+    loopIgnoredCommands.some(
+      (entry) =>
+        entry.command === "abrir youtube" &&
+        entry.reason === "duplicate_cooldown",
+    ),
+  );
+  assert.ok(
+    debugMessages.some((message) =>
+      String(message).includes("Listening loop already active"),
+    ),
+  );
+  loopController.stop();
   assert.strictEqual(loopController.recording, false);
   assert.strictEqual(loopController.transcribing, false);
-  loopController.stop();
   assert.strictEqual(loopController.enabled, false);
 
   restoreConfirm();

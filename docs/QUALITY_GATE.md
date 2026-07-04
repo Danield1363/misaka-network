@@ -105,3 +105,19 @@ Testes manuais com microfone, Vivaldi e clique/fala na UI: NOT RUN nesta rodada,
 | `pytest` | Suite Python executa | Falhou por shim local quebrado do Hermes/Python 3.11 | FAIL (ambiente) |
 | `python -m pytest` | Suite Python executa | `325 passed, 1 warning in 15.91s` | PASS |
 | Cloud Voice mock manual | Ativar escuta abre YouTube via microfone real | Nao executado nesta rodada | NOT RUN |
+
+## Hotfix Cloud Voice Duplicate Command Loop - 2026-07-03
+
+| Teste | Resultado esperado | Resultado obtido | Status |
+| --- | --- | --- | --- |
+| `node --check dashboard/app.js` | Sem SyntaxError | Sem erro | PASS |
+| `node --check dashboard/voiceWake.js` | Sem SyntaxError | Sem erro | PASS |
+| `node --check dashboard/voiceWake.test.js` | Sem SyntaxError | Sem erro | PASS |
+| `node --check desktop/main.js` | Sem SyntaxError | Sem erro | PASS |
+| `node --check desktop/preload.js` | Sem SyntaxError | Sem erro | PASS |
+| `node dashboard/voiceWake.test.js` | Mesmo transcript mock nao executa em loop; cooldown bloqueia duplicados; segundo loop nao inicia | `all voiceWake tests passed` | PASS |
+| `pytest` | Suite Python executa | Falhou por shim local quebrado do Hermes/Python 3.11 | FAIL (ambiente) |
+| `python -m pytest` | Suite Python executa | `325 passed, 1 warning in 8.91s` | PASS |
+| Cloud Voice mock manual | `VOICE_PROVIDER=mock` e `VOICE_MOCK_TRANSCRIPT=abrir youtube` abre YouTube uma vez e ignora repeticoes | Nao executado nesta rodada; coberto por teste JS automatizado | NOT RUN |
+| Desativar/reativar escuta manual | Loop para e volta sem duplicar gravacao | Nao executado nesta rodada; cobertura parcial em `voiceWake.test.js` | PARTIAL |
+| Comandos digitados | `abrir youtube`, `abrir notepad`, `abra explorer`, `abra calculadora` continuam funcionando | Cobertos pela suite Python de comandos/chat | PASS |

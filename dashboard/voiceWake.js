@@ -284,7 +284,10 @@
         this.storage.getItem("voice_command_debounce_ms") || 2500,
       );
       this.language = this.storage.getItem("voice_language") || "pt";
-      this.sessionId = `voice-${Math.random().toString(36).slice(2)}`;
+      this.voiceSessionId =
+        root.crypto?.randomUUID?.() ||
+        `voice-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      this.sessionId = this.voiceSessionId;
       this.stream = null;
       this.mediaStream = null;
       this.mediaRecorder = null;
@@ -298,11 +301,22 @@
       this.lastTranscript = "";
       this.lastCommand = "";
       this.lastError = "";
-      this.lastExecutedVoiceCommand = "";
+      this.lastExecutedVoiceCommand = null;
       this.lastExecutedVoiceCommandAt = 0;
+      this.lastTranscriptionText = null;
+      this.lastTranscriptionAt = 0;
+      this.lastVoiceCommandBlockReason = "";
+      this.commandCooldownMs = Number(
+        this.storage.getItem("voice_command_cooldown_ms") || 15000,
+      );
+      this.postCommandPauseMs = Number(
+        this.storage.getItem("voice_post_command_pause_ms") || 5000,
+      );
       this.transcribing = false;
       this.processingCommand = false;
       this.waitingForCommand = false;
+      this.onCommandIgnored =
+        options.onCommandIgnored || options.callbacks?.onCommandIgnored;
       this.voiceStatus = null;
     }
 
@@ -438,7 +452,10 @@
     }
 
     async startListeningLoop() {
-      if (this.listeningLoopActive) return;
+      if (this.listeningLoopActive) {
+        this.debug("Listening loop already active");
+        return;
+      }
       this.listeningLoopActive = true;
       this.enabled = true;
       this.active = true;
@@ -474,12 +491,34 @@
             continue;
           }
 
+          this.lastTranscriptionText = normalizeVoiceText(text);
+          this.lastTranscriptionAt = now();
           this.updateState(STATES.processing_command, `Processando: ${text}`);
-          await this.processVoiceText(text);
+          const result = await this.processVoiceText(text);
 
           if (this.enabled && this.listeningLoopActive) {
-            this.updateState(STATES.listening, "Ouvindo comandos...");
-            await sleep(300);
+            if (result?.executed) {
+              this.updateState(
+                STATES.listening,
+                "Comando executado. Aguardando novo comando...",
+              );
+              await sleep(this.postCommandPauseMs);
+            } else if (result?.reason === "duplicate_cooldown") {
+              this.updateState(
+                STATES.listening,
+                "Comando repetido ignorado por alguns segundos.",
+              );
+              await sleep(300);
+            } else if (result?.reason === "processing") {
+              this.updateState(
+                STATES.listening,
+                "Comando ignorado enquanto outro comando termina.",
+              );
+              await sleep(300);
+            } else {
+              this.updateState(STATES.listening, "Ouvindo comandos...");
+              await sleep(300);
+            }
           }
         } catch (error) {
           this.lastError = error?.message || String(error);
@@ -669,7 +708,7 @@
         form.append("audio", blob, `misaka-command.${extension}`);
         form.append("language", this.language);
         form.append("source", "cloud_voice");
-        form.append("session_id", this.sessionId);
+        form.append("session_id", this.voiceSessionId);
 
         const response = await root.fetch(`${this.apiBase}/voice/transcribe`, {
           method: "POST",
@@ -706,9 +745,9 @@
       return this.processVoiceText(text);
     }
 
-    processVoiceText(text) {
+    async processVoiceText(text) {
       const raw = String(text || "").trim();
-      if (!raw) return null;
+      if (!raw) return { executed: false, reason: "empty" };
       this.lastTranscript = raw;
       this.updateTranscript(raw);
       this.emitTranscript(raw, true);
@@ -717,11 +756,14 @@
       let command = null;
 
       if (this.commandMode === COMMAND_MODES.wakeWord) {
-        if (wakeCommand === null) return null;
+        if (wakeCommand === null) {
+          this.updateState(STATES.listening, "Ouvindo comandos...");
+          return { executed: false, reason: "no_wake_word" };
+        }
         this.emitWakeDetected(raw);
         if (!wakeCommand) {
           this.updateState(STATES.listening_for_command);
-          return "";
+          return { executed: false, reason: "wake_without_command" };
         }
         command = wakeCommand;
       } else if (this.commandMode === COMMAND_MODES.direct) {
@@ -731,7 +773,7 @@
           this.emitWakeDetected(raw);
           if (!wakeCommand) {
             this.updateState(STATES.listening_for_command);
-            return "";
+            return { executed: false, reason: "wake_without_command" };
           }
           command = wakeCommand;
         } else {
@@ -739,7 +781,11 @@
         }
       }
 
-      if (!command) return null;
+      if (!command) {
+        this.updateState(STATES.listening, "Ouvindo comandos...");
+        return { executed: false, reason: "no_command" };
+      }
+
       return this.sendVoiceCommand(command);
     }
 
@@ -761,42 +807,86 @@
       return extractCommandFromWakePhrase(text, DEFAULT_WAKE_PHRASES);
     }
 
-    sendVoiceCommand(command) {
+    async sendVoiceCommand(command) {
       const cleanCommand = String(command || "").trim();
-      if (!cleanCommand || this.isDuplicateCommand(cleanCommand)) return null;
+      if (!cleanCommand) return { executed: false, reason: "empty" };
 
-      this.processingCommand = true;
-      this.lastExecutedVoiceCommand = normalizeVoiceText(cleanCommand);
-      this.lastExecutedVoiceCommandAt = now();
       this.lastCommand = cleanCommand;
       this.updateCommand(cleanCommand);
+
+      if (!this.shouldExecuteVoiceCommand(cleanCommand)) {
+        const reason = this.lastVoiceCommandBlockReason || "blocked";
+        this.onCommandIgnored?.(cleanCommand, reason);
+        this.updateState(
+          STATES.listening,
+          reason === "processing"
+            ? "Comando ignorado enquanto outro comando termina."
+            : "Comando repetido ignorado por alguns segundos.",
+        );
+        return { executed: false, reason, command: cleanCommand };
+      }
+
+      this.processingCommand = true;
       cloudLog("command detected", cleanCommand);
       this.updateState(STATES.processing_command);
 
       const sender = this.sendCommandCallback || this.onCommand;
-      return Promise.resolve(sender ? sender(cleanCommand) : cleanCommand)
-        .then((result) => {
-          this.processingCommand = false;
-          if (this.enabled)
-            this.updateState(STATES.listening, "Cloud Voice ouvindo comandos.");
-          return result;
-        })
-        .catch((error) => {
-          this.processingCommand = false;
-          const message = `Erro ao processar comando de voz: ${error.message}`;
-          this.lastError = message;
-          this.updateState(STATES.error, message);
-          this.emitError("command", message);
-          return { success: false, error: message };
-        });
+      try {
+        const result = await Promise.resolve(
+          sender ? sender(cleanCommand) : cleanCommand,
+        );
+        this.markVoiceCommandExecuted(cleanCommand);
+        if (this.enabled && !this.listeningLoopActive) {
+          this.updateState(STATES.listening, "Cloud Voice ouvindo comandos.");
+        }
+        return { executed: true, command: cleanCommand, result };
+      } catch (error) {
+        const message = `Erro ao processar comando de voz: ${error.message}`;
+        this.lastError = message;
+        this.updateState(STATES.error, message);
+        this.emitError("command", message);
+        return { executed: false, reason: "command_error", error: message };
+      } finally {
+        this.processingCommand = false;
+      }
+    }
+
+    shouldExecuteVoiceCommand(command) {
+      const normalized = normalizeVoiceText(command);
+      const currentTime = now();
+      this.lastVoiceCommandBlockReason = "";
+
+      if (!normalized) return false;
+
+      if (this.processingCommand) {
+        this.lastVoiceCommandBlockReason = "processing";
+        this.debug(
+          `Ignoring command while another command is processing: ${normalized}`,
+        );
+        return false;
+      }
+
+      if (
+        normalized === this.lastExecutedVoiceCommand &&
+        currentTime - this.lastExecutedVoiceCommandAt < this.commandCooldownMs
+      ) {
+        this.lastVoiceCommandBlockReason = "duplicate_cooldown";
+        this.debug(
+          `Ignoring duplicated voice command during cooldown: ${normalized}`,
+        );
+        return false;
+      }
+
+      return true;
+    }
+
+    markVoiceCommandExecuted(command) {
+      this.lastExecutedVoiceCommand = normalizeVoiceText(command);
+      this.lastExecutedVoiceCommandAt = now();
     }
 
     isDuplicateCommand(command) {
-      const normalized = normalizeVoiceText(command);
-      return (
-        normalized === this.lastExecutedVoiceCommand &&
-        now() - this.lastExecutedVoiceCommandAt < this.debounceMs
-      );
+      return !this.shouldExecuteVoiceCommand(command);
     }
 
     setMode(mode) {

@@ -864,9 +864,9 @@ function updateWakeCommand(command) {
   }
 }
 
-function sendVoiceCommand(command) {
+async function sendVoiceCommand(command) {
   updateWakeCommand(command);
-  return sendMessage(command, { source: "voice" });
+  return await sendMessage(command, { source: "voice" });
 }
 
 async function setWakeWordEnabled(enabled) {
