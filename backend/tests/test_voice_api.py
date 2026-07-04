@@ -43,6 +43,58 @@ def test_voice_transcribe_mock(client):
     assert data["provider"] == "mock"
 
 
+def test_voice_transcribe_mock_one_shot_by_session(client):
+    payload = {"language": "pt", "source": "test", "session_id": "session-one-shot"}
+    first = client.post(
+        "/api/voice/transcribe",
+        files={"audio": ("command.webm", BytesIO(b"fake-audio"), "audio/webm")},
+        data=payload,
+    )
+    second = client.post(
+        "/api/voice/transcribe",
+        files={"audio": ("command.webm", BytesIO(b"fake-audio"), "audio/webm")},
+        data=payload,
+    )
+    third = client.post(
+        "/api/voice/transcribe",
+        files={"audio": ("command.webm", BytesIO(b"fake-audio"), "audio/webm")},
+        data={**payload, "session_id": "session-one-shot-new"},
+    )
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert third.status_code == 200
+    assert first.json()["text"] == "abrir youtube"
+    assert second.json()["text"] == ""
+    assert third.json()["text"] == "abrir youtube"
+
+
+def test_voice_transcribe_mock_repeat_true(monkeypatch):
+    monkeypatch.setenv("VOICE_ENABLED", "true")
+    monkeypatch.setenv("VOICE_PROVIDER", "mock")
+    monkeypatch.setenv("VOICE_MOCK_TRANSCRIPT", "abrir youtube")
+    monkeypatch.setenv("VOICE_MOCK_REPEAT", "true")
+    get_settings.cache_clear()
+    app = create_app()
+    with TestClient(app) as test_client:
+        first = test_client.post(
+            "/api/voice/transcribe",
+            files={"audio": ("command.webm", BytesIO(b"fake-audio"), "audio/webm")},
+            data={"language": "pt", "source": "test", "session_id": "repeat-session"},
+        )
+        second = test_client.post(
+            "/api/voice/transcribe",
+            files={"audio": ("command.webm", BytesIO(b"fake-audio"), "audio/webm")},
+            data={"language": "pt", "source": "test", "session_id": "repeat-session"},
+        )
+    get_settings.cache_clear()
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert first.json()["text"] == "abrir youtube"
+    assert second.json()["text"] == "abrir youtube"
+
+
 def test_voice_transcribe_mock_empty_env_uses_dev_fallback(monkeypatch):
     monkeypatch.setenv("VOICE_ENABLED", "true")
     monkeypatch.setenv("VOICE_PROVIDER", "mock")

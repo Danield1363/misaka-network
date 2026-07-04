@@ -216,6 +216,7 @@ def test_chat_open_youtube_channel_with_open_verb(client):
         ("abrir calculadora", "calculator"),
         ("abrir discord", "discord"),
         ("abrir vscode", "vscode"),
+        ("abrir spotify", "spotify"),
     ],
 )
 def test_chat_desktop_apps_do_not_fall_to_llm(client, message, app):
@@ -254,6 +255,20 @@ def test_chat_open_youtube_video_search(client):
     assert "minecraft" in action["url"]
 
 
+def test_chat_search_youtube_with_procurar(client):
+    response = client.post(
+        "/api/chat",
+        json={"message": "procurar black wings no youtube"},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    action = data["metadata"]["client_action"]
+    assert data["agent"] == "command_router"
+    assert action["type"] == "search_web"
+    assert action["provider"] == "youtube"
+    assert action["query"] == "black wings"
+
+
 @pytest.mark.parametrize(
     ("message", "provider", "needle"),
     [
@@ -275,10 +290,30 @@ def test_chat_search_sites_do_not_fall_to_llm(client, message, provider, needle)
         assert action["provider"] == provider
 
 
-def test_chat_dangerous_desktop_command_requires_confirmation(client):
+def test_chat_power_action_shutdown_returns_client_action(client):
     response = client.post("/api/chat", json={"message": "desligar computador"})
     assert response.status_code == 200
     data = response.json()
     assert data["agent"] == "command_router"
-    assert data["metadata"]["requires_confirmation"] is True
-    assert data["metadata"]["command"] == "dangerous_desktop_action"
+    assert data["metadata"]["command"] == "power_action"
+    action = data["metadata"]["client_action"]
+    assert action["type"] == "power_action"
+    assert action["action"] == "shutdown"
+
+
+@pytest.mark.parametrize(
+    ("message", "action"),
+    [
+        ("reiniciar computador", "restart"),
+        ("bloquear computador", "lock"),
+        ("suspender computador", "sleep"),
+    ],
+)
+def test_chat_power_actions_return_client_action(client, message, action):
+    response = client.post("/api/chat", json={"message": message})
+    assert response.status_code == 200
+    data = response.json()
+    client_action = data["metadata"]["client_action"]
+    assert data["agent"] == "command_router"
+    assert client_action["type"] == "power_action"
+    assert client_action["action"] == action

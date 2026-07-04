@@ -26,6 +26,7 @@ UI_EFFECT_MAP = {
     "open_app": "none",
     "open_url": "none",
     "search_web": "none",
+    "power_action": "none",
     "pc_status": "refresh_status",
     "android_vibrate": "none",
     "android_open_app": "none",

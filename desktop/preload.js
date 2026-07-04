@@ -27,6 +27,31 @@ contextBridge.exposeInMainWorld("misakaDesktop", {
     return invoke("desktop:open-app", appName);
   },
 
+  powerAction: (action, options = {}) => {
+    if (typeof action !== "string") {
+      return invalid("Acao de energia invalida.");
+    }
+    return invoke("desktop:power-action", {
+      action,
+      confirmed: Boolean(options?.confirmed),
+    });
+  },
+
+  getDesktopActionSettings: () => invoke("desktop:get-action-settings"),
+
+  setDesktopActionSettings: (settings = {}) =>
+    invoke("desktop:set-action-settings", {
+      appsNoConfirmation: Boolean(settings.appsNoConfirmation),
+      powerActionsEnabled: Boolean(settings.powerActionsEnabled),
+      powerActionsRequireConfirmation: Boolean(
+        settings.powerActionsRequireConfirmation,
+      ),
+    }),
+
+  openAppsConfig: () => invoke("desktop:open-apps-config"),
+
+  reloadAppsRegistry: () => invoke("desktop:reload-apps-registry"),
+
   searchWeb: (query, provider) => {
     if (typeof query !== "string") {
       return invalid("Query invalida.");

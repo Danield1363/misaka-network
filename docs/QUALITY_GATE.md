@@ -62,7 +62,7 @@
 | `pesquise misaka network no github` | Search GitHub | Coberto por teste | PASS |
 | `pesquise cobblemon no modrinth` | Search Modrinth | Coberto por teste | PASS |
 | `procure atm 10 no curseforge` | Search CurseForge | Coberto por teste | PASS |
-| `desligar computador` | Requer confirmacao | Coberto por teste | PASS |
+| `desligar computador` | `client_action.power_action=shutdown` | Coberto por teste; execucao desktop desativada por padrao | PASS |
 
 ## Dashboard Voice
 
@@ -121,3 +121,23 @@ Testes manuais com microfone, Vivaldi e clique/fala na UI: NOT RUN nesta rodada,
 | Cloud Voice mock manual | `VOICE_PROVIDER=mock` e `VOICE_MOCK_TRANSCRIPT=abrir youtube` abre YouTube uma vez e ignora repeticoes | Nao executado nesta rodada; coberto por teste JS automatizado | NOT RUN |
 | Desativar/reativar escuta manual | Loop para e volta sem duplicar gravacao | Nao executado nesta rodada; cobertura parcial em `voiceWake.test.js` | PARTIAL |
 | Comandos digitados | `abrir youtube`, `abrir notepad`, `abra explorer`, `abra calculadora` continuam funcionando | Cobertos pela suite Python de comandos/chat | PASS |
+
+## Hotfix Cloud Voice/Desktop Action Stabilization - 2026-07-03
+
+| Teste | Resultado esperado | Resultado obtido | Status |
+| --- | --- | --- | --- |
+| `node --check dashboard/app.js` | Sem SyntaxError | Sem erro | PASS |
+| `node --check dashboard/voiceWake.js` | Sem SyntaxError | Sem erro | PASS |
+| `node --check dashboard/voiceWake.test.js` | Sem SyntaxError | Sem erro | PASS |
+| `node --check desktop/main.js` | Sem SyntaxError | Sem erro | PASS |
+| `node --check desktop/preload.js` | Sem SyntaxError | Sem erro | PASS |
+| `node dashboard/voiceWake.test.js` | Cooldown, await de comando, stop forte e power command delegado | `all voiceWake tests passed` | PASS |
+| `pytest` | Suite Python executa | Falhou por shim local quebrado do Hermes/Python 3.11 | FAIL (ambiente) |
+| `python -m pytest` | Suite Python executa | `334 passed, 1 warning in 9.65s` | PASS |
+| `python -m pytest backend/tests/test_voice_api.py backend/tests/test_chat_commands.py backend/tests/test_desktop_resolver.py` | Mock one-shot, comandos desktop/web/power e resolver | `66 passed, 1 warning in 4.92s` | PASS |
+| `cd desktop && npm start` | Electron abre e nao fecha sozinho | Processo npm vivo apos 12s; 4 novos processos Electron; processos do teste encerrados | PASS |
+| Cloud Voice mock `VOICE_MOCK_REPEAT=false` | `abrir youtube` nao repete infinitamente por session_id | Coberto por `test_voice_transcribe_mock_one_shot_by_session` e `voiceWake.test.js` | PASS |
+| App desconhecido | `abrir spotify` retorna `open_app: spotify`; desktop mostra erro claro se nao configurado | Coberto por backend; execucao real nao testada | PARTIAL |
+| Apps configurados | Sem confirmacao e sem shell arbitrario | Implementado via `apps.json`/`appAliases.json` e `spawn(..., shell=false)` | PASS |
+| Power actions | Existem como `power_action` e ficam desativadas por padrao | Coberto por backend e configuracao desktop; execucao real nao testada por seguranca | PASS |
+| Comandos manuais reais no Electron | notepad/explorer/calculadora/discord/vscode/youtube/canal Alanzoka | Nao executado interativamente nesta rodada | NOT RUN |

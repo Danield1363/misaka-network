@@ -93,6 +93,17 @@ def test_powershell():
     assert cmd.app == "powershell"
 
 
+def test_unknown_configured_app_candidate():
+    cmd = detect_desktop_command("abrir spotify")
+    assert cmd.matched is True
+    assert cmd.app == "spotify"
+
+
+def test_web_target_not_treated_as_unknown_app():
+    cmd = detect_desktop_command("abrir youtube")
+    assert cmd.matched is False
+
+
 def test_abrir_discord_without_article():
     cmd = detect_desktop_command("abrir discord")
     assert cmd.matched is True

@@ -35,6 +35,34 @@ APP_ALIASES = {
     "powershell": "powershell",
 }
 
+WEB_TARGETS = {
+    "youtube",
+    "yt",
+    "google",
+    "github",
+    "reddit",
+    "modrinth",
+    "curseforge",
+    "wikipedia",
+    "twitch",
+    "steam",
+    "nexusmods",
+    "site",
+    "canal",
+    "video",
+    "vídeo",
+}
+
+INTERNAL_COMMAND_TARGETS = {
+    "configuracoes",
+    "settings",
+    "alertas",
+    "chat",
+    "hud",
+    "voz",
+    "voice",
+}
+
 VERB_PATTERNS = [
     r"\babrir\b",
     r"\babra\b",
@@ -105,6 +133,39 @@ def resolve_app_name(text: str) -> str | None:
     return best_match
 
 
+def extract_unknown_app_name(text: str) -> str | None:
+    normalized = normalize_text(text)
+    match = re.search(
+        r"\b(?:abrir|abra|abre|iniciar|inicia|executar|execute|rodar|roda|rode|chamar|chama)\s+(?:o\s+|a\s+|os\s+|as\s+)?(.+)$",
+        normalized,
+    )
+    if not match:
+        return None
+
+    candidate = match.group(1).strip()
+    candidate = re.sub(
+        r"\s+(?:no\s+meu\s+computador|no\s+computador|no\s+pc|no\s+desktop|na\s+minha\s+maquina|localmente)$",
+        "",
+        candidate,
+    ).strip()
+    candidate = re.sub(r"^(?:app|aplicativo|programa)\s+", "", candidate).strip()
+
+    if not candidate or len(candidate) > 48:
+        return None
+    first_word = candidate.split()[0]
+    if (
+        first_word in WEB_TARGETS
+        or candidate in WEB_TARGETS
+        or first_word in INTERNAL_COMMAND_TARGETS
+        or candidate in INTERNAL_COMMAND_TARGETS
+    ):
+        return None
+    if re.search(r"\b(?:canal|video|pesquisa|busca|site)\b", candidate):
+        return None
+
+    return candidate
+
+
 def resolve_target_device(text: str) -> str:
     normalized = normalize_text(text)
     for pattern in TARGET_PATTERNS:
@@ -124,6 +185,9 @@ def detect_desktop_action(text: str) -> DesktopCommand:
     normalized = normalize_text(text)
     app = resolve_app_name(text)
     has_verb = _has_action_verb(normalized)
+
+    if not app and has_verb:
+        app = extract_unknown_app_name(text)
 
     if not app:
         return DesktopCommand()

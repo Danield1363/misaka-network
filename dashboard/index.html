@@ -385,6 +385,53 @@
           </div>
         </div>
         <div class="settings-section">
+          <h3>Acoes Desktop</h3>
+          <div class="settings-item">
+            <span>Abrir apps sem confirmacao:</span>
+            <label class="toggle-label">
+              <input
+                type="checkbox"
+                id="settingsDesktopAppsNoConfirmation"
+                checked
+              />
+            </label>
+          </div>
+          <div class="settings-item">
+            <span>Apps registry:</span>
+            <span id="settingsAppsRegistryPath">desktop/apps.json</span>
+          </div>
+          <div class="settings-actions">
+            <button class="btn-test-voice" id="btnOpenAppsRegistry">
+              Abrir apps.json
+            </button>
+            <button class="btn-stop-voice" id="btnReloadAppsRegistry">
+              Recarregar apps
+            </button>
+          </div>
+        </div>
+        <div class="settings-section">
+          <h3>Power Actions</h3>
+          <div class="settings-item">
+            <span>Permitir energia:</span>
+            <label class="toggle-label">
+              <input type="checkbox" id="settingsPowerActionsEnabled" />
+            </label>
+          </div>
+          <div class="settings-item">
+            <span>Exigir confirmacao:</span>
+            <label class="toggle-label">
+              <input
+                type="checkbox"
+                id="settingsPowerActionsRequireConfirmation"
+                checked
+              />
+            </label>
+          </div>
+          <p class="settings-note">
+            Comandos de energia podem encerrar ou bloquear o PC.
+          </p>
+        </div>
+        <div class="settings-section">
           <h3>Sobre</h3>
           <div class="settings-item">
             <span>Versão:</span>

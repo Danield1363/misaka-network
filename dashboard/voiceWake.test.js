@@ -224,7 +224,47 @@ async function runCloudVoiceTests() {
   assert.deepStrictEqual(commands, ["abrir youtube", "abrir youtube"]);
   controller.processingCommand = false;
 
-  controller.stop();
+  let resolveCommand;
+  const awaitedCommands = [];
+  const awaitedController = new VoiceWakeController({
+    storage: fakeStorage(),
+    callbacks: {
+      onCommand: (command) => {
+        awaitedCommands.push(command);
+        return new Promise((resolve) => {
+          resolveCommand = resolve;
+        });
+      },
+    },
+  });
+  await awaitedController.init();
+  const pendingCommand = awaitedController.processVoiceText("abrir explorer");
+  await Promise.resolve();
+  assert.strictEqual(awaitedController.processingCommand, true);
+  resolveCommand({ success: true });
+  const awaitedResult = await pendingCommand;
+  assert.strictEqual(awaitedResult.executed, true);
+  assert.strictEqual(awaitedController.processingCommand, false);
+  assert.deepStrictEqual(awaitedCommands, ["abrir explorer"]);
+
+  const powerCommands = [];
+  const powerController = new VoiceWakeController({
+    storage: fakeStorage(),
+    callbacks: {
+      onCommand: (command) => {
+        powerCommands.push(command);
+        return Promise.resolve({ success: true });
+      },
+    },
+  });
+  await powerController.init();
+  const powerResult = await powerController.processVoiceText(
+    "desligar computador",
+  );
+  assert.strictEqual(powerResult.executed, true);
+  assert.deepStrictEqual(powerCommands, ["desligar computador"]);
+
+  await controller.stop();
   assert.strictEqual(controller.listeningLoopActive, false);
   assert.strictEqual(controller.recording, false);
 
@@ -267,7 +307,7 @@ async function runCloudVoiceTests() {
       String(message).includes("Listening loop already active"),
     ),
   );
-  loopController.stop();
+  await loopController.stop();
   assert.strictEqual(loopController.recording, false);
   assert.strictEqual(loopController.transcribing, false);
   assert.strictEqual(loopController.enabled, false);
@@ -318,8 +358,61 @@ async function runStartFailureTest() {
   restoreNavigator();
 }
 
+async function runStopCancellationTest() {
+  let recorderStopped = false;
+  let trackStopped = false;
+  let abortSeen = false;
+  const abortController = new AbortController();
+  abortController.signal.addEventListener("abort", () => {
+    abortSeen = true;
+  });
+
+  const controller = new VoiceWakeController({ storage: fakeStorage() });
+  controller.abortController = abortController;
+  controller.currentRecorder = {
+    state: "recording",
+    stop: () => {
+      recorderStopped = true;
+    },
+  };
+  controller.currentStream = {
+    getTracks: () => [
+      {
+        stop: () => {
+          trackStopped = true;
+        },
+      },
+    ],
+  };
+  controller.recordingTimer = setTimeout(() => {}, 1000);
+  controller.hardTimeout = setTimeout(() => {}, 1000);
+  controller.loopTimer = setTimeout(() => {}, 1000);
+  controller.enabled = true;
+  controller.listeningLoopActive = true;
+  controller.recording = true;
+  controller.transcribing = true;
+  controller.processingCommand = true;
+
+  const result = await controller.stop();
+
+  assert.strictEqual(result.success, true);
+  assert.strictEqual(result.stopped, true);
+  assert.strictEqual(controller.enabled, false);
+  assert.strictEqual(controller.listeningLoopActive, false);
+  assert.strictEqual(controller.recording, false);
+  assert.strictEqual(controller.transcribing, false);
+  assert.strictEqual(controller.processingCommand, false);
+  assert.strictEqual(recorderStopped, true);
+  assert.strictEqual(trackStopped, true);
+  assert.strictEqual(abortSeen, true);
+  assert.strictEqual(controller.recordingTimer, null);
+  assert.strictEqual(controller.hardTimeout, null);
+  assert.strictEqual(controller.loopTimer, null);
+}
+
 runCloudVoiceTests()
   .then(runStartFailureTest)
+  .then(runStopCancellationTest)
   .then(() => {
     console.log("all voiceWake tests passed");
   })

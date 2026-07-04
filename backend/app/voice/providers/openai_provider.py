@@ -16,6 +16,7 @@ class OpenAIVoiceProvider(VoiceProvider):
         language: str,
         filename: str,
         content_type: str,
+        session_id: str | None = None,
     ) -> dict:
         if not self.settings.OPENAI_API_KEY:
             raise VoiceProviderNotConfigured()
@@ -47,4 +48,3 @@ class OpenAIVoiceProvider(VoiceProvider):
             "language": language,
             "confidence": None,
         }
-

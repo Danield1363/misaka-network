@@ -89,6 +89,7 @@ class VoiceService:
                 language=language or self.settings.VOICE_LANGUAGE,
                 filename=audio.filename or f"audio.{suffix}",
                 content_type=audio.content_type or "",
+                session_id=session_id,
             )
             self.last_error = None
             return VoiceTranscriptionResponse(
@@ -154,4 +155,3 @@ class VoiceService:
                 "audio_format_unsupported",
             )
         return suffix
-

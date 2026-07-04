@@ -23,6 +23,8 @@
     "files": [
       "main.js",
       "preload.js",
+      "apps.json",
+      "appAliases.json",
       "package.json",
       "assets/**/*",
       "control/**/*",

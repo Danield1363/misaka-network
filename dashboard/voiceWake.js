@@ -188,6 +188,13 @@
     return "webm";
   }
 
+  function createVoiceSessionId() {
+    return (
+      root.crypto?.randomUUID?.() ||
+      `voice-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    );
+  }
+
   function isWebSpeechSupported() {
     return Boolean(root.SpeechRecognition || root.webkitSpeechRecognition);
   }
@@ -284,16 +291,19 @@
         this.storage.getItem("voice_command_debounce_ms") || 2500,
       );
       this.language = this.storage.getItem("voice_language") || "pt";
-      this.voiceSessionId =
-        root.crypto?.randomUUID?.() ||
-        `voice-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      this.voiceSessionId = createVoiceSessionId();
       this.sessionId = this.voiceSessionId;
       this.stream = null;
       this.mediaStream = null;
       this.mediaRecorder = null;
+      this.abortController = null;
+      this.currentRecorder = null;
+      this.currentStream = null;
       this.recording = false;
       this.listeningLoopActive = false;
       this.recordingTimer = null;
+      this.hardTimeout = null;
+      this.loopTimer = null;
       this.restartTimer = null;
       this.commandCaptureTimer = null;
       this.recognition = null;
@@ -303,6 +313,7 @@
       this.lastError = "";
       this.lastExecutedVoiceCommand = null;
       this.lastExecutedVoiceCommandAt = 0;
+      this.lastExecutedVoiceCommandId = null;
       this.lastTranscriptionText = null;
       this.lastTranscriptionAt = 0;
       this.lastVoiceCommandBlockReason = "";
@@ -315,6 +326,7 @@
       this.transcribing = false;
       this.processingCommand = false;
       this.waitingForCommand = false;
+      this.mockOneShotConsumed = false;
       this.onCommandIgnored =
         options.onCommandIgnored || options.callbacks?.onCommandIgnored;
       this.voiceStatus = null;
@@ -344,10 +356,16 @@
 
     async start() {
       if (this.active || this.starting) {
-        return { success: true, mode: this.inputMode };
+        return {
+          success: true,
+          alreadyActive: true,
+          mode: this.inputMode,
+          message: "Escuta ja esta ativa.",
+        };
       }
 
       this.clearTimers();
+      this.resetVoiceSession();
       this.starting = true;
       this.stoppedByUser = false;
 
@@ -439,6 +457,7 @@
           audio: true,
         });
         this.stream = this.mediaStream;
+        this.currentStream = this.mediaStream;
         this.updateState(STATES.microphone_ready);
         return { success: true };
       } catch (error) {
@@ -462,13 +481,18 @@
 
       while (this.enabled && this.listeningLoopActive) {
         try {
+          if (this.processingCommand) {
+            await sleep(500);
+            continue;
+          }
+
           const blob = await this.recordChunk();
           if (!this.enabled || !this.listeningLoopActive) break;
 
-          if (!blob) {
+          if (!blob || blob.size === 0) {
             this.updateState(
               STATES.listening,
-              "Nenhuma fala capturada. Ouvindo...",
+              "Nenhuma fala capturada. Aguardando comando...",
             );
             await sleep(300);
             continue;
@@ -485,7 +509,7 @@
           if (!text) {
             this.updateState(
               STATES.listening,
-              "Nenhum comando identificado. Ouvindo...",
+              "Nenhum comando identificado. Aguardando comando...",
             );
             await sleep(300);
             continue;
@@ -494,7 +518,7 @@
           this.lastTranscriptionText = normalizeVoiceText(text);
           this.lastTranscriptionAt = now();
           this.updateState(STATES.processing_command, `Processando: ${text}`);
-          const result = await this.processVoiceText(text);
+          const result = await this.processVoiceText(text, transcription);
 
           if (this.enabled && this.listeningLoopActive) {
             if (result?.executed) {
@@ -536,6 +560,7 @@
         }
       }
 
+      this.listeningLoopActive = false;
       this.recording = false;
       this.transcribing = false;
       if (!this.enabled && this.state !== STATES.error) {
@@ -549,20 +574,34 @@
         root.clearTimeout(this.recordingTimer);
         this.recordingTimer = null;
       }
+      if (this.hardTimeout) {
+        root.clearTimeout(this.hardTimeout);
+        this.hardTimeout = null;
+      }
       if (this.mediaRecorder && this.mediaRecorder.state === "recording") {
         try {
           this.mediaRecorder.stop();
         } catch (_) {}
       }
+      if (
+        this.currentRecorder &&
+        this.currentRecorder !== this.mediaRecorder &&
+        this.currentRecorder.state === "recording"
+      ) {
+        try {
+          this.currentRecorder.stop();
+        } catch (_) {}
+      }
+      this.currentRecorder = null;
     }
 
     async recordChunk() {
-      const stream = this.stream || this.mediaStream;
+      const stream = this.currentStream || this.stream || this.mediaStream;
       if (!stream) {
         throw new Error("Microfone nao inicializado.");
       }
 
-      if (this.recording || this.transcribing) {
+      if (this.recording || this.transcribing || this.processingCommand) {
         return null;
       }
 
@@ -582,6 +621,9 @@
         const clearLocalTimers = () => {
           if (forceStopTimer) root.clearTimeout(forceStopTimer);
           if (hardTimeout) root.clearTimeout(hardTimeout);
+          if (this.recordingTimer === forceStopTimer)
+            this.recordingTimer = null;
+          if (this.hardTimeout === hardTimeout) this.hardTimeout = null;
           forceStopTimer = null;
           hardTimeout = null;
         };
@@ -592,6 +634,7 @@
           this.recording = false;
           clearLocalTimers();
           if (this.mediaRecorder === recorder) this.mediaRecorder = null;
+          if (this.currentRecorder === recorder) this.currentRecorder = null;
           resolve(result);
         };
 
@@ -601,6 +644,7 @@
           this.recording = false;
           clearLocalTimers();
           if (this.mediaRecorder === recorder) this.mediaRecorder = null;
+          if (this.currentRecorder === recorder) this.currentRecorder = null;
           reject(error);
         };
 
@@ -609,6 +653,7 @@
             ? new root.MediaRecorder(stream, { mimeType })
             : new root.MediaRecorder(stream);
           this.mediaRecorder = recorder;
+          this.currentRecorder = recorder;
         } catch (error) {
           fail(
             new Error(
@@ -669,6 +714,7 @@
             fail(error);
           }
         }, this.chunkMs || 4000);
+        this.recordingTimer = forceStopTimer;
 
         hardTimeout = root.setTimeout(
           () => {
@@ -685,6 +731,7 @@
           },
           (this.chunkMs || 4000) + 3000,
         );
+        this.hardTimeout = hardTimeout;
       });
     }
 
@@ -701,6 +748,7 @@
         throw new Error("Transcricao em andamento.");
       }
       this.transcribing = true;
+      this.abortController = new root.AbortController();
       this.updateState(STATES.transcribing);
       try {
         const form = new root.FormData();
@@ -713,6 +761,7 @@
         const response = await root.fetch(`${this.apiBase}/voice/transcribe`, {
           method: "POST",
           body: form,
+          signal: this.abortController.signal,
         });
         const data = await response.json().catch(() => null);
         if (!response.ok || !data?.success) {
@@ -729,6 +778,7 @@
         throw error;
       } finally {
         this.transcribing = false;
+        this.abortController = null;
       }
     }
 
@@ -745,7 +795,7 @@
       return this.processVoiceText(text);
     }
 
-    async processVoiceText(text) {
+    async processVoiceText(text, transcription = null) {
       const raw = String(text || "").trim();
       if (!raw) return { executed: false, reason: "empty" };
       this.lastTranscript = raw;
@@ -786,19 +836,16 @@
         return { executed: false, reason: "no_command" };
       }
 
-      return this.sendVoiceCommand(command);
+      return this.sendVoiceCommand(command, transcription);
     }
 
     commandFromDirectText(text) {
       const classification = classifyVoiceCommand(text);
       if (!classification.matched) return null;
       if (classification.requires_confirmation) {
-        const message =
-          "Comando perigoso requer confirmacao e nao foi executado.";
-        this.lastError = message;
-        this.updateState(STATES.error, message);
-        this.emitError("dangerous_command", message);
-        return null;
+        this.debug(
+          `Dangerous voice command delegated to command router: ${classification.command}`,
+        );
       }
       return classification.command;
     }
@@ -807,7 +854,7 @@
       return extractCommandFromWakePhrase(text, DEFAULT_WAKE_PHRASES);
     }
 
-    async sendVoiceCommand(command) {
+    async sendVoiceCommand(command, transcription = null) {
       const cleanCommand = String(command || "").trim();
       if (!cleanCommand) return { executed: false, reason: "empty" };
 
@@ -833,7 +880,13 @@
       const sender = this.sendCommandCallback || this.onCommand;
       try {
         const result = await Promise.resolve(
-          sender ? sender(cleanCommand) : cleanCommand,
+          sender
+            ? sender(cleanCommand, {
+                source: "voice",
+                transcription,
+                sessionId: this.voiceSessionId,
+              })
+            : cleanCommand,
         );
         this.markVoiceCommandExecuted(cleanCommand);
         if (this.enabled && !this.listeningLoopActive) {
@@ -852,7 +905,7 @@
     }
 
     shouldExecuteVoiceCommand(command) {
-      const normalized = normalizeVoiceText(command);
+      const normalized = this.normalizeCommandForDedup(command);
       const currentTime = now();
       this.lastVoiceCommandBlockReason = "";
 
@@ -881,12 +934,19 @@
     }
 
     markVoiceCommandExecuted(command) {
-      this.lastExecutedVoiceCommand = normalizeVoiceText(command);
+      this.lastExecutedVoiceCommand = this.normalizeCommandForDedup(command);
       this.lastExecutedVoiceCommandAt = now();
+      this.lastExecutedVoiceCommandId = `${this.lastExecutedVoiceCommand}:${this.lastExecutedVoiceCommandAt}`;
     }
 
     isDuplicateCommand(command) {
       return !this.shouldExecuteVoiceCommand(command);
+    }
+
+    normalizeCommandForDedup(command) {
+      return normalizeVoiceText(command || "")
+        .replace(/\s+/g, " ")
+        .trim();
     }
 
     setMode(mode) {
@@ -904,17 +964,37 @@
     }
 
     async setEnabled(enabled) {
-      if (enabled) return this.start();
-      this.stop();
-      return { success: true };
+      if (!enabled) {
+        return await this.stop();
+      }
+
+      if (this.enabled || this.listeningLoopActive || this.starting) {
+        return {
+          success: true,
+          alreadyActive: true,
+          mode: this.inputMode,
+          message: "Escuta ja esta ativa.",
+        };
+      }
+
+      this.updateState(STATES.checking, "Preparando escuta...");
+      const result = await this.start();
+      if (!result?.success) {
+        await this.stop();
+        this.updateState(
+          result?.state || STATES.error,
+          result?.error || "Nao foi possivel iniciar escuta.",
+        );
+      }
+      return result;
     }
 
-    restart() {
-      this.stop();
+    async restart() {
+      await this.stop();
       return this.start();
     }
 
-    stop() {
+    async stop() {
       this.enabled = false;
       this.active = false;
       this.starting = false;
@@ -924,13 +1004,22 @@
       this.recording = false;
       this.listeningLoopActive = false;
       this.waitingForCommand = false;
+
+      if (this.abortController) {
+        try {
+          this.abortController.abort();
+        } catch (_) {}
+        this.abortController = null;
+      }
+
       this.stopListeningLoop();
       this.stopWebSpeech();
       this.stopNativeVoice();
       this.stopMediaStream();
       this.clearTimers();
       this.persistSettings();
-      this.updateState(STATES.off);
+      this.updateState(STATES.off, "Escuta desligada.");
+      return { success: true, stopped: true };
     }
 
     dispose() {
@@ -1127,20 +1216,38 @@
     }
 
     stopMediaStream() {
-      const stream = this.stream || this.mediaStream;
+      const stream = this.currentStream || this.stream || this.mediaStream;
       if (!stream) return;
-      stream.getTracks().forEach((track) => track.stop());
+      stream.getTracks().forEach((track) => {
+        try {
+          track.stop();
+        } catch (_) {}
+      });
+      this.currentStream = null;
       this.mediaStream = null;
       this.stream = null;
     }
 
     clearTimers() {
       if (this.recordingTimer) root.clearTimeout(this.recordingTimer);
+      if (this.hardTimeout) root.clearTimeout(this.hardTimeout);
+      if (this.loopTimer) root.clearTimeout(this.loopTimer);
       if (this.restartTimer) root.clearTimeout(this.restartTimer);
       if (this.commandCaptureTimer) root.clearTimeout(this.commandCaptureTimer);
       this.recordingTimer = null;
+      this.hardTimeout = null;
+      this.loopTimer = null;
       this.restartTimer = null;
       this.commandCaptureTimer = null;
+    }
+
+    resetVoiceSession() {
+      this.voiceSessionId = createVoiceSessionId();
+      this.sessionId = this.voiceSessionId;
+      this.mockOneShotConsumed = false;
+      this.lastTranscriptionText = null;
+      this.lastTranscriptionAt = 0;
+      this.lastExecutedVoiceCommandId = null;
     }
 
     persistSettings() {

@@ -14,6 +14,38 @@ Comandos operacionais sao tratados pelo backend antes do LLM. A resposta do chat
 | `abrir vs code` | `open_app: vscode` |
 | `abrir chrome` | `open_app: chrome` |
 | `abrir edge` | `open_app: edge` |
+| `abrir spotify` | `open_app: spotify` |
+
+Apps conhecidos e apps configurados pelo usuario nao pedem confirmacao. A bridge Electron nao executa comandos vindos da fala; ela recebe apenas a chave do app e procura essa chave no registry.
+
+### App Registry
+
+O desktop carrega apps de:
+
+- `desktop/apps.json`: defaults versionados.
+- `%APPDATA%/misaka-desktop/apps.json`: copia editavel criada no primeiro start.
+
+Aliases ficam em `desktop/appAliases.json` e na copia editavel em `%APPDATA%/misaka-desktop/appAliases.json`.
+
+Exemplo:
+
+```json
+{
+  "apps": {
+    "spotify": {
+      "label": "Spotify",
+      "command": "%APPDATA%\\Spotify\\Spotify.exe",
+      "args": []
+    }
+  }
+}
+```
+
+Se o comando for `abrir spotify` e o app nao existir no registry, o Electron retorna:
+
+```text
+Aplicativo nao configurado. Adicione no desktop/apps.json.
+```
 
 ## Sites E Pesquisas
 
@@ -27,6 +59,22 @@ Comandos operacionais sao tratados pelo backend antes do LLM. A resposta do chat
 | `pesquise misaka network no github` | Abre busca GitHub |
 | `pesquise cobblemon no modrinth` | Abre busca Modrinth |
 | `procure atm 10 no curseforge` | Abre busca CurseForge |
+
+## Power Actions
+
+| Frase | client_action |
+| --- | --- |
+| `desligar computador` | `power_action: shutdown` |
+| `reiniciar computador` | `power_action: restart` |
+| `suspender computador` | `power_action: sleep` |
+| `bloquear computador` | `power_action: lock` |
+
+Power actions ficam desativadas por padrao. No drawer de configuracoes:
+
+- `Permitir energia` habilita desligar/reiniciar/suspender/bloquear.
+- `Exigir confirmacao` pede confirmacao visual antes de enviar ao desktop.
+
+O Electron executa somente as acoes fixas acima com `spawn(..., { shell: false })`.
 
 ## Respostas Do Dashboard
 
@@ -51,4 +99,4 @@ Nao consegui abrir {app}. Motivo: {erro}, diz Misaka Misaka.
 
 ## Seguranca
 
-Comandos perigosos como `desligar computador`, `reiniciar computador`, `apagar arquivo`, `formatar`, `comprar` e `pagar` nao executam diretamente. A voz bloqueia comandos perigosos e o backend retorna confirmacao se receber esse texto.
+Nao ha shell arbitrario. Apps sao chaves de registry, URLs aceitam apenas `http://`/`https://`, e power actions exigem configuracao explicita no desktop.

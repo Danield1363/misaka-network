@@ -5,6 +5,7 @@ const {
   Menu,
   nativeImage,
   Notification,
+  dialog,
   ipcMain,
   session,
   shell,
@@ -108,6 +109,214 @@ const NOTIFIED_IDS_FILE = path.join(
   app.getPath("userData"),
   "notified_alerts.json",
 );
+const USER_APPS_FILE = path.join(app.getPath("userData"), "apps.json");
+const USER_APP_ALIASES_FILE = path.join(
+  app.getPath("userData"),
+  "appAliases.json",
+);
+const DESKTOP_SETTINGS_FILE = path.join(
+  app.getPath("userData"),
+  "desktop_settings.json",
+);
+const SOURCE_APPS_FILE = path.join(__dirname, "apps.json");
+const SOURCE_APP_ALIASES_FILE = path.join(__dirname, "appAliases.json");
+
+const DEFAULT_DESKTOP_ACTION_SETTINGS = {
+  appsNoConfirmation: true,
+  powerActionsEnabled: false,
+  powerActionsRequireConfirmation: true,
+};
+
+const FALLBACK_APP_REGISTRY = {
+  apps: {
+    browser: {
+      label: "Navegador",
+      command: "__open_url__",
+      url: "https://www.google.com",
+      args: [],
+    },
+    notepad: { label: "Bloco de Notas", command: "notepad.exe", args: [] },
+    explorer: {
+      label: "Explorador de Arquivos",
+      command: "explorer.exe",
+      args: [],
+    },
+    calculator: { label: "Calculadora", command: "calc.exe", args: [] },
+    discord: {
+      label: "Discord",
+      commandCandidates: [
+        "%LOCALAPPDATA%\\Discord\\Update.exe",
+        "%LOCALAPPDATA%\\DiscordCanary\\Update.exe",
+        "%LOCALAPPDATA%\\DiscordPTB\\Update.exe",
+      ],
+      args: ["--processStart", "Discord.exe"],
+    },
+    vscode: {
+      label: "VS Code",
+      commandCandidates: [
+        "%LOCALAPPDATA%\\Programs\\Microsoft VS Code\\Code.exe",
+        "%PROGRAMFILES%\\Microsoft VS Code\\Code.exe",
+      ],
+      args: [],
+    },
+    chrome: {
+      label: "Chrome",
+      commandCandidates: [
+        "%PROGRAMFILES%\\Google\\Chrome\\Application\\chrome.exe",
+        "%PROGRAMFILES(X86)%\\Google\\Chrome\\Application\\chrome.exe",
+        "%LOCALAPPDATA%\\Google\\Chrome\\Application\\chrome.exe",
+      ],
+      args: [],
+    },
+    edge: {
+      label: "Edge",
+      commandCandidates: [
+        "%LOCALAPPDATA%\\Microsoft\\Edge\\Application\\msedge.exe",
+        "%PROGRAMFILES%\\Microsoft\\Edge\\Application\\msedge.exe",
+      ],
+      args: [],
+    },
+  },
+};
+
+const FALLBACK_APP_ALIASES = {
+  "bloco de notas": "notepad",
+  notepad: "notepad",
+  explorador: "explorer",
+  "explorador de arquivos": "explorer",
+  explorer: "explorer",
+  calculadora: "calculator",
+  calculator: "calculator",
+  calc: "calculator",
+  "visual studio code": "vscode",
+  "vs code": "vscode",
+  vscode: "vscode",
+  discord: "discord",
+  chrome: "chrome",
+  edge: "edge",
+  navegador: "browser",
+  browser: "browser",
+};
+
+function readJsonFile(filePath, fallback) {
+  try {
+    if (!fs.existsSync(filePath)) return fallback;
+    return JSON.parse(fs.readFileSync(filePath, "utf-8"));
+  } catch (error) {
+    safeWarn("[Misaka Desktop] invalid json:", filePath, error.message);
+    return fallback;
+  }
+}
+
+function writeJsonFile(filePath, data) {
+  fs.writeFileSync(filePath, `${JSON.stringify(data, null, 2)}\n`, "utf-8");
+}
+
+function ensureUserConfigFiles() {
+  try {
+    if (!fs.existsSync(USER_APPS_FILE)) {
+      const defaults = readJsonFile(SOURCE_APPS_FILE, FALLBACK_APP_REGISTRY);
+      writeJsonFile(USER_APPS_FILE, defaults);
+    }
+    if (!fs.existsSync(USER_APP_ALIASES_FILE)) {
+      const defaults = readJsonFile(
+        SOURCE_APP_ALIASES_FILE,
+        FALLBACK_APP_ALIASES,
+      );
+      writeJsonFile(USER_APP_ALIASES_FILE, defaults);
+    }
+    if (!fs.existsSync(DESKTOP_SETTINGS_FILE)) {
+      writeJsonFile(DESKTOP_SETTINGS_FILE, DEFAULT_DESKTOP_ACTION_SETTINGS);
+    }
+  } catch (error) {
+    safeWarn("[Misaka Desktop] failed to create user config:", error.message);
+  }
+}
+
+function loadDesktopActionSettings() {
+  ensureUserConfigFiles();
+  const stored = readJsonFile(DESKTOP_SETTINGS_FILE, {});
+  return {
+    ...DEFAULT_DESKTOP_ACTION_SETTINGS,
+    ...stored,
+    appsRegistryPath: USER_APPS_FILE,
+    appAliasesPath: USER_APP_ALIASES_FILE,
+  };
+}
+
+function saveDesktopActionSettings(settings = {}) {
+  const next = {
+    ...DEFAULT_DESKTOP_ACTION_SETTINGS,
+    ...readJsonFile(DESKTOP_SETTINGS_FILE, {}),
+    appsNoConfirmation: Boolean(settings.appsNoConfirmation),
+    powerActionsEnabled: Boolean(settings.powerActionsEnabled),
+    powerActionsRequireConfirmation: Boolean(
+      settings.powerActionsRequireConfirmation,
+    ),
+  };
+  writeJsonFile(DESKTOP_SETTINGS_FILE, next);
+  return loadDesktopActionSettings();
+}
+
+function loadAppRegistry() {
+  ensureUserConfigFiles();
+  const source = readJsonFile(SOURCE_APPS_FILE, FALLBACK_APP_REGISTRY);
+  const user = readJsonFile(USER_APPS_FILE, {});
+  return {
+    apps: {
+      ...(source.apps || {}),
+      ...(user.apps || {}),
+    },
+  };
+}
+
+function loadAppAliases() {
+  ensureUserConfigFiles();
+  const source = readJsonFile(SOURCE_APP_ALIASES_FILE, FALLBACK_APP_ALIASES);
+  const user = readJsonFile(USER_APP_ALIASES_FILE, {});
+  return {
+    ...source,
+    ...user,
+  };
+}
+
+function normalizeAppKey(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^\w\s-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function resolveAppKey(appName) {
+  const normalized = normalizeAppKey(appName);
+  const aliases = loadAppAliases();
+  return aliases[normalized] || normalized;
+}
+
+function expandEnvVars(value) {
+  return String(value || "").replace(/%([^%]+)%/g, (_match, name) => {
+    return process.env[name] || process.env[name.toUpperCase()] || "";
+  });
+}
+
+function configuredCommandCandidates(appConfig) {
+  if (Array.isArray(appConfig.commandCandidates)) {
+    return appConfig.commandCandidates.map(expandEnvVars).filter(Boolean);
+  }
+  return appConfig.command ? [expandEnvVars(appConfig.command)] : [];
+}
+
+function selectConfiguredCommand(appConfig) {
+  const candidates = configuredCommandCandidates(appConfig);
+  for (const candidate of candidates) {
+    if (!path.isAbsolute(candidate)) return candidate;
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  return candidates[0] || "";
+}
 
 function loadNotifiedIds() {
   try {
@@ -371,99 +580,6 @@ function setupMediaPermissions() {
   );
 }
 
-function findWindowsApp(name) {
-  const localAppData = process.env.LOCALAPPDATA || "";
-  const programFiles = process.env["PROGRAMFILES"] || "C:\\Program Files";
-  const programFilesX86 =
-    process.env["PROGRAMFILES(X86)"] || "C:\\Program Files (x86)";
-
-  const searchPaths = [
-    path.join(localAppData, "Programs", name),
-    path.join(programFiles, name),
-    path.join(programFilesX86, name),
-    path.join(programFiles, `${name}\\${name}.exe`),
-    path.join(programFilesX86, `${name}\\${name}.exe`),
-  ];
-
-  for (const p of searchPaths) {
-    if (fs.existsSync(p)) return p;
-    if (fs.existsSync(`${p}.exe`)) return `${p}.exe`;
-  }
-  return null;
-}
-
-const WINDOWS_APP_LAUNCHERS = {
-  browser: () => shell.openExternal("https://www.google.com"),
-  chrome: () => {
-    const localAppData = process.env.LOCALAPPDATA || "";
-    const programFiles = process.env["PROGRAMFILES"] || "C:\\Program Files";
-    const programFilesX86 =
-      process.env["PROGRAMFILES(X86)"] || "C:\\Program Files (x86)";
-    const paths = [
-      path.join(programFiles, "Google", "Chrome", "Application", "chrome.exe"),
-      path.join(
-        programFilesX86,
-        "Google",
-        "Chrome",
-        "Application",
-        "chrome.exe",
-      ),
-      path.join(localAppData, "Google", "Chrome", "Application", "chrome.exe"),
-    ];
-    const found = paths.find((p) => fs.existsSync(p));
-    if (!found)
-      throw new Error("Chrome nao encontrado nos caminhos permitidos.");
-    spawn(found, [], { detached: true, stdio: "ignore" }).unref();
-  },
-  edge: () => {
-    const localAppData = process.env.LOCALAPPDATA || "";
-    const programFiles = process.env["PROGRAMFILES"] || "C:\\Program Files";
-    const paths = [
-      path.join(localAppData, "Microsoft", "Edge", "Application", "msedge.exe"),
-      path.join(programFiles, "Microsoft", "Edge", "Application", "msedge.exe"),
-    ];
-    const found = paths.find((p) => fs.existsSync(p));
-    if (!found) throw new Error("Edge nao encontrado nos caminhos permitidos.");
-    spawn(found, [], { detached: true, stdio: "ignore" }).unref();
-  },
-  vscode: () => {
-    const localAppData = process.env.LOCALAPPDATA || "";
-    const programFiles = process.env["PROGRAMFILES"] || "C:\\Program Files";
-    const paths = [
-      path.join(localAppData, "Programs", "Microsoft VS Code", "Code.exe"),
-      path.join(programFiles, "Microsoft VS Code", "Code.exe"),
-    ];
-    const found = paths.find((p) => fs.existsSync(p));
-    if (!found)
-      throw new Error("VS Code nao encontrado nos caminhos permitidos.");
-    spawn(found, [], { detached: true, stdio: "ignore" }).unref();
-  },
-  explorer: () =>
-    spawn("explorer.exe", [], { detached: true, stdio: "ignore" }).unref(),
-  discord: () => {
-    const localAppData = process.env.LOCALAPPDATA || "";
-    const paths = [
-      path.join(localAppData, "Discord", "Update.exe"),
-      path.join(localAppData, "DiscordCanary", "Update.exe"),
-      path.join(localAppData, "DiscordPTB", "Update.exe"),
-    ];
-    const found = paths.find((p) => fs.existsSync(p));
-    if (!found)
-      throw new Error("Discord nao encontrado nos caminhos conhecidos.");
-    spawn(found, ["--processStart", "Discord.exe"], {
-      detached: true,
-      stdio: "ignore",
-    }).unref();
-  },
-  notepad: () =>
-    spawn("notepad.exe", [], { detached: true, stdio: "ignore" }).unref(),
-  calculator: () =>
-    spawn("calc.exe", [], { detached: true, stdio: "ignore" }).unref(),
-  cmd: () => spawn("cmd.exe", [], { detached: true, stdio: "ignore" }).unref(),
-  powershell: () =>
-    spawn("powershell.exe", [], { detached: true, stdio: "ignore" }).unref(),
-};
-
 function launchApp(appName) {
   safeLog("[Misaka Desktop] openApp requested:", appName);
 
@@ -471,7 +587,7 @@ function launchApp(appName) {
     return { success: false, error: "Nome do app obrigatorio." };
   }
 
-  const normalizedApp = appName.toLowerCase().trim();
+  const normalizedApp = resolveAppKey(appName);
 
   if (process.platform !== "win32") {
     return {
@@ -481,19 +597,62 @@ function launchApp(appName) {
     };
   }
 
-  const launcher = WINDOWS_APP_LAUNCHERS[normalizedApp];
-  if (!launcher) {
+  const registry = loadAppRegistry();
+  const appConfig = registry.apps?.[normalizedApp];
+  if (!appConfig) {
     return {
       success: false,
       app: normalizedApp,
-      error: `App "${normalizedApp}" nao esta na allowlist.`,
+      error: "Aplicativo nao configurado. Adicione no desktop/apps.json.",
     };
   }
 
   try {
-    launcher();
+    const command = selectConfiguredCommand(appConfig);
+    const args = Array.isArray(appConfig.args)
+      ? appConfig.args.map(expandEnvVars)
+      : [];
+
+    if (command === "__open_url__") {
+      const url = appConfig.url || "https://www.google.com";
+      shell.openExternal(url);
+      safeLog("[Misaka Desktop] openApp browser success:", normalizedApp);
+      return {
+        success: true,
+        app: normalizedApp,
+        label: appConfig.label || normalizedApp,
+        method: "apps.json",
+      };
+    }
+
+    if (!command) {
+      return {
+        success: false,
+        app: normalizedApp,
+        error: "Aplicativo configurado sem comando valido.",
+      };
+    }
+
+    if (path.isAbsolute(command) && !fs.existsSync(command)) {
+      return {
+        success: false,
+        app: normalizedApp,
+        error: `Executavel nao encontrado: ${command}`,
+      };
+    }
+
+    spawn(command, args, {
+      detached: true,
+      stdio: "ignore",
+      shell: false,
+    }).unref();
     safeLog("[Misaka Desktop] openApp success:", normalizedApp);
-    return { success: true, app: normalizedApp, method: "allowlist" };
+    return {
+      success: true,
+      app: normalizedApp,
+      label: appConfig.label || normalizedApp,
+      method: "apps.json",
+    };
   } catch (e) {
     safeLog("[Misaka Desktop] openApp failed:", normalizedApp, e.message);
     return {
@@ -535,6 +694,85 @@ async function openExternalUrl(url) {
     return { success: false, url, error: e.message };
   }
 }
+
+async function executePowerAction(action) {
+  const normalizedAction = String(action || "")
+    .toLowerCase()
+    .trim();
+  const allowedActions = new Set(["shutdown", "restart", "sleep", "lock"]);
+  if (!allowedActions.has(normalizedAction)) {
+    return { success: false, error: "Acao de energia invalida." };
+  }
+
+  if (process.platform !== "win32") {
+    return {
+      success: false,
+      action: normalizedAction,
+      error: `Plataforma nao suportada: ${process.platform}`,
+    };
+  }
+
+  const settings = loadDesktopActionSettings();
+  const enabled = settings.powerActionsEnabled;
+  const requireConfirmation = settings.powerActionsRequireConfirmation;
+  if (!enabled) {
+    return {
+      success: false,
+      action: normalizedAction,
+      error: "Comandos de energia estao desativados. Ative nas configuracoes.",
+    };
+  }
+  if (requireConfirmation) {
+    const label =
+      {
+        shutdown: "desligar",
+        restart: "reiniciar",
+        sleep: "suspender",
+        lock: "bloquear",
+      }[normalizedAction] || normalizedAction;
+    const result = await dialog.showMessageBox(mainWindow, {
+      type: "warning",
+      buttons: ["Executar", "Cancelar"],
+      cancelId: 1,
+      defaultId: 1,
+      title: "Confirmar comando de energia",
+      message: `Confirmar comando para ${label} o computador?`,
+      detail: "Esta acao pode encerrar sessoes ou suspender o PC.",
+    });
+    if (result.response !== 0) {
+      return {
+        success: false,
+        action: normalizedAction,
+        error: "Comando de energia cancelado.",
+      };
+    }
+  }
+
+  const commands = {
+    shutdown: ["shutdown.exe", ["/s", "/t", "0"]],
+    restart: ["shutdown.exe", ["/r", "/t", "0"]],
+    lock: ["rundll32.exe", ["user32.dll,LockWorkStation"]],
+    sleep: ["rundll32.exe", ["powrprof.dll,SetSuspendState", "0,1,0"]],
+  };
+  const [command, args] = commands[normalizedAction];
+  try {
+    spawn(command, args, {
+      detached: true,
+      stdio: "ignore",
+      shell: false,
+    }).unref();
+    safeLog("[Misaka Desktop] power action success:", normalizedAction);
+    return { success: true, action: normalizedAction };
+  } catch (error) {
+    safeError("[Misaka Desktop] power action failed:", normalizedAction, error);
+    return {
+      success: false,
+      action: normalizedAction,
+      error: error.message,
+    };
+  }
+}
+
 function setupIPC() {
   ipcMain.handle("get-config", () => CONFIG);
 
@@ -569,6 +807,44 @@ function setupIPC() {
           ? url.url
           : "";
     return openExternalUrl(target);
+  });
+
+  ipcMain.handle("desktop:power-action", async (_event, payload) => {
+    const action =
+      typeof payload === "string"
+        ? payload
+        : payload && typeof payload.action === "string"
+          ? payload.action
+          : "";
+    return executePowerAction(action);
+  });
+
+  ipcMain.handle("desktop:get-action-settings", async () => {
+    return { success: true, ...loadDesktopActionSettings() };
+  });
+
+  ipcMain.handle("desktop:set-action-settings", async (_event, settings) => {
+    return { success: true, ...saveDesktopActionSettings(settings || {}) };
+  });
+
+  ipcMain.handle("desktop:open-apps-config", async () => {
+    ensureUserConfigFiles();
+    try {
+      shell.showItemInFolder(USER_APPS_FILE);
+      return { success: true, path: USER_APPS_FILE };
+    } catch (error) {
+      return { success: false, error: error.message, path: USER_APPS_FILE };
+    }
+  });
+
+  ipcMain.handle("desktop:reload-apps-registry", async () => {
+    ensureUserConfigFiles();
+    const registry = loadAppRegistry();
+    return {
+      success: true,
+      apps: Object.keys(registry.apps || {}),
+      path: USER_APPS_FILE,
+    };
   });
 
   ipcMain.handle("desktop:search-web", async (_event, payload) => {
@@ -777,6 +1053,7 @@ function setupPolling() {
 
 app.whenReady().then(() => {
   loadNotifiedIds();
+  ensureUserConfigFiles();
   setupMediaPermissions();
   createWindow();
   setupPolling();

@@ -31,13 +31,14 @@ VOICE_MAX_AUDIO_SECONDS=10
 VOICE_MAX_AUDIO_BYTES=5000000
 VOICE_LANGUAGE=pt
 VOICE_MOCK_TRANSCRIPT="abrir youtube"
+VOICE_MOCK_REPEAT=false
 OPENAI_API_KEY=
 OPENAI_TRANSCRIPTION_MODEL=gpt-4o-mini-transcribe
 ```
 
 ## Providers
 
-`mock`: usado em desenvolvimento e testes. Retorna `VOICE_MOCK_TRANSCRIPT`.
+`mock`: usado em desenvolvimento e testes. Com `VOICE_MOCK_REPEAT=false` (padrao), retorna `VOICE_MOCK_TRANSCRIPT` apenas uma vez por `session_id`; depois retorna texto vazio ate a proxima sessao de escuta. Com `VOICE_MOCK_REPEAT=true`, retorna sempre o transcript configurado.
 
 `openai`: preparado para transcricao real. So inicia se `OPENAI_API_KEY` existir no backend. A chave nunca vai para frontend, preload ou bundle desktop.
 
@@ -66,7 +67,17 @@ Aceita:
 - `limpe os alertas`
 - `ative o hud`
 
-Comandos perigosos como `desligar computador`, `formatar`, `apagar arquivo`, `comprar` e `pagar` nao executam direto. A camada de voz bloqueia e o backend tambem retorna confirmacao quando recebe esse texto.
+Comandos de energia como `desligar computador`, `reiniciar computador`, `suspender computador` e `bloquear computador` sao enviados como `power_action`. Eles ficam desativados por padrao no desktop e exigem configuracao explicita.
+
+Comandos perigosos que nao sao power actions, como `formatar`, `apagar arquivo`, `comprar` e `pagar`, nao executam direto. O backend retorna confirmacao quando recebe esse texto.
+
+## Anti-loop
+
+- Cada ativacao de Cloud Voice gera um novo `voiceSessionId`.
+- O frontend envia `session_id` em toda transcricao.
+- O mock nao repete o mesmo transcript infinitamente quando `VOICE_MOCK_REPEAT=false`.
+- O controller marca o ultimo comando executado e ignora repeticoes identicas durante `commandCooldownMs` (padrao: 15s).
+- `stop()` aborta request pendente, para o recorder atual, limpa timers e encerra tracks de microfone.
 
 ## Endpoints
 

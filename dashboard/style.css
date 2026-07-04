@@ -1110,6 +1110,12 @@ body {
   margin-top: 0.5rem;
 }
 
+.settings-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
 .btn-danger {
   padding: 0.5rem 1rem;
   background: rgba(255, 107, 129, 0.1);

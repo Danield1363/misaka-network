@@ -31,6 +31,13 @@ DANGEROUS_COMMAND_PATTERNS = [
     r"\bpagar\b",
 ]
 
+POWER_ACTION_PATTERNS: list[tuple[str, str]] = [
+    ("shutdown", r"\bdeslig(?:ar|ue|a)\s+(?:o\s+)?(?:computador|pc)\b"),
+    ("restart", r"\breinici(?:ar|e|a)\s+(?:o\s+)?(?:computador|pc)\b"),
+    ("sleep", r"\bsuspend(?:er|a|e)\s+(?:o\s+)?(?:computador|pc)\b"),
+    ("lock", r"\bbloque(?:ar|ie|ia)\s+(?:o\s+)?(?:computador|pc)\b"),
+]
+
 
 class CommandRouter:
     def __init__(self) -> None:
@@ -41,6 +48,10 @@ class CommandRouter:
         message: str,
         context: dict[str, Any] | None = None,
     ) -> dict[str, Any] | None:
+        power_result = self._route_power_action(message)
+        if power_result is not None:
+            return power_result
+
         dangerous_result = self._route_dangerous_command(message)
         if dangerous_result is not None:
             return dangerous_result
@@ -199,6 +210,31 @@ class CommandRouter:
             "confirmation_id": conf.id,
             "parameters": {"text": message},
         }
+
+    def _route_power_action(self, message: str) -> dict[str, Any] | None:
+        normalized = normalize_text(message)
+        for action, pattern in POWER_ACTION_PATTERNS:
+            if not re.search(pattern, normalized):
+                continue
+            return {
+                "type": "command_executed",
+                "intent": "power_action",
+                "command": "power_action",
+                "tool_name": "desktop.power_action",
+                "success": True,
+                "data": {"action": action},
+                "response_message": "Comando de energia preparado.",
+                "client_action": {
+                    "type": "power_action",
+                    "target": "desktop",
+                    "action": action,
+                },
+                "metadata": {
+                    "response_mode": "action_short",
+                    "ui_effect": "none",
+                },
+            }
+        return None
 
     def _build_client_action(
         self, intent_name: str, parameters: dict, message: str

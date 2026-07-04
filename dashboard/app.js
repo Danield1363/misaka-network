@@ -63,6 +63,12 @@ let voiceWakeController = null;
 let compactMode = localStorage.getItem("misaka_compact_mode") === "true";
 let desktopNotificationsEnabled =
   localStorage.getItem("misaka_desktop_notifications") === "true";
+let desktopAppsNoConfirmation =
+  localStorage.getItem("misaka_desktop_apps_no_confirmation") !== "false";
+let powerActionsEnabled =
+  localStorage.getItem("misaka_power_actions_enabled") === "true";
+let powerActionsRequireConfirmation =
+  localStorage.getItem("misaka_power_actions_require_confirmation") !== "false";
 const lastToastByMessage = new Map();
 
 const APP_DISPLAY_NAMES = {
@@ -76,6 +82,14 @@ const APP_DISPLAY_NAMES = {
   browser: "Navegador",
   cmd: "Prompt de Comando",
   powershell: "PowerShell",
+  spotify: "Spotify",
+};
+
+const POWER_ACTION_LABELS = {
+  shutdown: "desligar",
+  restart: "reiniciar",
+  sleep: "suspender",
+  lock: "bloquear",
 };
 
 function showToast(message, type = "info", duration = 4000) {
@@ -458,6 +472,37 @@ async function handleClientAction(action) {
     );
   }
 
+  if (action.type === "power_action") {
+    const powerAction = action.action || "";
+    const label = POWER_ACTION_LABELS[powerAction] || powerAction || "energia";
+    if (!window.misakaDesktop?.powerAction) {
+      const error = "use o app desktop da Misaka para comandos de energia";
+      return actionResult(
+        action,
+        false,
+        `Nao consegui ${label} o computador. Motivo: ${error}, diz Misaka Misaka.`,
+        { error },
+      );
+    }
+
+    const result = await window.misakaDesktop.powerAction(powerAction);
+    if (result?.success) {
+      return actionResult(
+        action,
+        true,
+        `Comando de energia enviado: ${label}, diz Misaka Misaka.`,
+        result,
+      );
+    }
+    const error = result?.error || "comando de energia nao executado";
+    return actionResult(
+      action,
+      false,
+      `Nao consegui ${label} o computador. Motivo: ${error}, diz Misaka Misaka.`,
+      { error },
+    );
+  }
+
   if (action.type === "search_web" || action.type === "search_youtube") {
     const provider =
       action.type === "search_youtube"
@@ -632,10 +677,11 @@ async function sendMessage(messageOverride = null, options = {}) {
     processUiEffect(data.metadata?.ui_effect);
 
     let assistantResponse = data.response || "";
+    let clientActionResult = null;
     const clientAction = data.metadata?.client_action;
     if (clientAction) {
-      const result = await handleClientAction(clientAction);
-      assistantResponse = result.message || assistantResponse;
+      clientActionResult = await handleClientAction(clientAction);
+      assistantResponse = clientActionResult.message || assistantResponse;
     }
 
     if (assistantResponse) {
@@ -645,7 +691,13 @@ async function sendMessage(messageOverride = null, options = {}) {
 
     setCoreState("speaking");
     setTimeout(() => setCoreState(null), 1200);
-    return data;
+    return {
+      success: true,
+      response: assistantResponse,
+      metadata: data.metadata,
+      clientActionResult,
+      data,
+    };
   } catch (error) {
     const messageText = `Erro ao conectar com o servidor: ${error.message}`;
     addMessage(messageText, "system");
@@ -774,6 +826,22 @@ async function loadSettingsInfo() {
     "settingsDesktopBridge",
     window.misakaDesktop?.isAvailable ? "Online" : "Web mode",
   );
+  if (window.misakaDesktop?.getDesktopActionSettings) {
+    try {
+      const settings = await window.misakaDesktop.getDesktopActionSettings();
+      if (settings?.success !== false) {
+        desktopAppsNoConfirmation =
+          settings.appsNoConfirmation ?? desktopAppsNoConfirmation;
+        powerActionsEnabled =
+          settings.powerActionsEnabled ?? powerActionsEnabled;
+        powerActionsRequireConfirmation =
+          settings.powerActionsRequireConfirmation ??
+          powerActionsRequireConfirmation;
+        hydrateDesktopActionSettings();
+        setText("settingsAppsRegistryPath", settings.appsRegistryPath || "-");
+      }
+    } catch (_) {}
+  }
   try {
     const response = await fetch(`${API_BASE}/android/status`);
     const data = await response.json();
@@ -783,6 +851,46 @@ async function loadSettingsInfo() {
     );
   } catch (_) {
     setText("settingsAndroidBridge", "-");
+  }
+}
+
+function hydrateDesktopActionSettings() {
+  $("settingsDesktopAppsNoConfirmation") &&
+    ($("settingsDesktopAppsNoConfirmation").checked =
+      desktopAppsNoConfirmation);
+  $("settingsPowerActionsEnabled") &&
+    ($("settingsPowerActionsEnabled").checked = powerActionsEnabled);
+  $("settingsPowerActionsRequireConfirmation") &&
+    ($("settingsPowerActionsRequireConfirmation").checked =
+      powerActionsRequireConfirmation);
+}
+
+async function saveDesktopActionSettings() {
+  localStorage.setItem(
+    "misaka_desktop_apps_no_confirmation",
+    String(desktopAppsNoConfirmation),
+  );
+  localStorage.setItem(
+    "misaka_power_actions_enabled",
+    String(powerActionsEnabled),
+  );
+  localStorage.setItem(
+    "misaka_power_actions_require_confirmation",
+    String(powerActionsRequireConfirmation),
+  );
+  if (window.misakaDesktop?.setDesktopActionSettings) {
+    try {
+      const settings = await window.misakaDesktop.setDesktopActionSettings({
+        appsNoConfirmation: desktopAppsNoConfirmation,
+        powerActionsEnabled,
+        powerActionsRequireConfirmation,
+      });
+      if (settings?.appsRegistryPath) {
+        setText("settingsAppsRegistryPath", settings.appsRegistryPath);
+      }
+    } catch (error) {
+      showToast(`Erro ao salvar acoes desktop: ${error.message}`, "warning");
+    }
   }
 }
 
@@ -864,9 +972,11 @@ function updateWakeCommand(command) {
   }
 }
 
-async function sendVoiceCommand(command) {
+async function sendVoiceCommand(command, metadata = {}) {
   updateWakeCommand(command);
-  return await sendMessage(command, { source: "voice" });
+  return await sendMessage(command, {
+    source: metadata?.source || "voice",
+  });
 }
 
 async function setWakeWordEnabled(enabled) {
@@ -1043,6 +1153,50 @@ function bindEvents() {
       Notification.requestPermission();
     }
   });
+  $("settingsDesktopAppsNoConfirmation")?.addEventListener(
+    "change",
+    async (event) => {
+      desktopAppsNoConfirmation = event.target.checked;
+      await saveDesktopActionSettings();
+    },
+  );
+  $("settingsPowerActionsEnabled")?.addEventListener(
+    "change",
+    async (event) => {
+      powerActionsEnabled = event.target.checked;
+      await saveDesktopActionSettings();
+    },
+  );
+  $("settingsPowerActionsRequireConfirmation")?.addEventListener(
+    "change",
+    async (event) => {
+      powerActionsRequireConfirmation = event.target.checked;
+      await saveDesktopActionSettings();
+    },
+  );
+  $("btnOpenAppsRegistry")?.addEventListener("click", async () => {
+    if (!window.misakaDesktop?.openAppsConfig) {
+      showToast("Abra pelo app desktop para editar apps.json.", "warning");
+      return;
+    }
+    const result = await window.misakaDesktop.openAppsConfig();
+    if (!result?.success) {
+      showToast(result?.error || "Nao consegui abrir apps.json.", "warning");
+    }
+  });
+  $("btnReloadAppsRegistry")?.addEventListener("click", async () => {
+    if (!window.misakaDesktop?.reloadAppsRegistry) {
+      showToast("Abra pelo app desktop para recarregar apps.", "warning");
+      return;
+    }
+    const result = await window.misakaDesktop.reloadAppsRegistry();
+    showToast(
+      result?.success
+        ? "Apps recarregados."
+        : result?.error || "Nao consegui recarregar apps.",
+      result?.success ? "success" : "warning",
+    );
+  });
 }
 
 function hydrateSettings() {
@@ -1053,6 +1207,7 @@ function hydrateSettings() {
   $("settingsCompactMode") && ($("settingsCompactMode").checked = compactMode);
   $("settingsDesktopNotifications") &&
     ($("settingsDesktopNotifications").checked = desktopNotificationsEnabled);
+  hydrateDesktopActionSettings();
   if (wakeWordToggle) {
     wakeWordToggle.checked =
       localStorage.getItem("wake_word_enabled") === "true";

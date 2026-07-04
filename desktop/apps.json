@@ -1,0 +1,59 @@
+{
+  "apps": {
+    "browser": {
+      "label": "Navegador",
+      "command": "__open_url__",
+      "url": "https://www.google.com",
+      "args": []
+    },
+    "notepad": {
+      "label": "Bloco de Notas",
+      "command": "notepad.exe",
+      "args": []
+    },
+    "explorer": {
+      "label": "Explorador de Arquivos",
+      "command": "explorer.exe",
+      "args": []
+    },
+    "calculator": {
+      "label": "Calculadora",
+      "command": "calc.exe",
+      "args": []
+    },
+    "discord": {
+      "label": "Discord",
+      "commandCandidates": [
+        "%LOCALAPPDATA%\\Discord\\Update.exe",
+        "%LOCALAPPDATA%\\DiscordCanary\\Update.exe",
+        "%LOCALAPPDATA%\\DiscordPTB\\Update.exe"
+      ],
+      "args": ["--processStart", "Discord.exe"]
+    },
+    "vscode": {
+      "label": "VS Code",
+      "commandCandidates": [
+        "%LOCALAPPDATA%\\Programs\\Microsoft VS Code\\Code.exe",
+        "%PROGRAMFILES%\\Microsoft VS Code\\Code.exe"
+      ],
+      "args": []
+    },
+    "chrome": {
+      "label": "Chrome",
+      "commandCandidates": [
+        "%PROGRAMFILES%\\Google\\Chrome\\Application\\chrome.exe",
+        "%PROGRAMFILES(X86)%\\Google\\Chrome\\Application\\chrome.exe",
+        "%LOCALAPPDATA%\\Google\\Chrome\\Application\\chrome.exe"
+      ],
+      "args": []
+    },
+    "edge": {
+      "label": "Edge",
+      "commandCandidates": [
+        "%LOCALAPPDATA%\\Microsoft\\Edge\\Application\\msedge.exe",
+        "%PROGRAMFILES%\\Microsoft\\Edge\\Application\\msedge.exe"
+      ],
+      "args": []
+    }
+  }
+}

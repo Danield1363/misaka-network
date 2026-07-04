@@ -12,6 +12,6 @@ class VoiceProvider(ABC):
         language: str,
         filename: str,
         content_type: str,
+        session_id: str | None = None,
     ) -> dict:
         raise NotImplementedError
-

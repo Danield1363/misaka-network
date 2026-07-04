@@ -4,9 +4,10 @@
 
 - Nenhuma API key no frontend, preload ou bundle desktop.
 - Sem shell arbitrario.
-- Apps locais abertos apenas por allowlist.
+- Apps locais abertos apenas por registry configurado.
+- Power actions desativadas por padrao e protegidas por configuracao explicita.
 - Audio nao e salvo por padrao.
-- Comandos perigosos exigem confirmacao ou sao bloqueados pela voz.
+- Comandos perigosos fora do conjunto de power actions exigem confirmacao ou sao bloqueados.
 
 ## Riscos
 
@@ -14,7 +15,8 @@
 | --- | --- | --- |
 | Exposicao de API key | Alto | `OPENAI_API_KEY`, `GEMINI_API_KEY` e demais chaves ficam apenas no backend/env |
 | Shell injection | Alto | Bridge Electron nao aceita comando shell arbitrario |
-| Abertura de app indevido | Medio | `openApp` usa allowlist fixa |
+| Abertura de app indevido | Medio | `openApp` resolve apenas chaves em `apps.json`/`appAliases.json` |
+| Desligamento acidental | Alto | `power_action` fica desativado por padrao e pode exigir confirmacao |
 | URL insegura | Medio | `openUrl` aceita apenas `http://` e `https://` |
 | Captura de audio sem consentimento | Alto | Escuta desligada por padrao e aviso antes da primeira ativacao |
 | Persistencia de audio | Alto | Backend usa arquivo temporario e remove no `finally` |
@@ -48,20 +50,24 @@
 - Permissoes Electron: `media`/`microphone` permitidas; demais negadas.
 - Logs ficam em `%APPDATA%\misaka-desktop\misaka-desktop.log`.
 
-## Allowlist De Apps
+## App Registry
 
-- `notepad`
-- `explorer`
-- `calculator`
-- `discord`
-- `vscode`
-- `chrome`
-- `edge`
-- `browser`
-- `cmd`
-- `powershell`
+- Apps padrao ficam em `desktop/apps.json`.
+- Aliases ficam em `desktop/appAliases.json`.
+- O Electron cria uma copia editavel no diretorio `userData`.
+- A fala nunca vira comando shell.
+- O renderer envia apenas `open_app` com uma chave, como `notepad` ou `spotify`.
+- O Electron executa a entrada configurada com `spawn(..., { shell: false })`.
 
-Mesmo com `cmd` e `powershell` na allowlist, a bridge apenas abre o app permitido. Ela nao recebe comandos arbitrarios para executar dentro deles.
+Se a chave nao existir no registry, a resposta segura e: `Aplicativo nao configurado. Adicione no desktop/apps.json.`
+
+## Power Actions
+
+- `shutdown`, `restart`, `sleep` e `lock` sao as unicas acoes aceitas.
+- `powerActionsEnabled=false` por padrao.
+- `powerActionsRequireConfirmation=true` por padrao.
+- A configuracao e lida pelo processo principal do Electron.
+- Nao existe canal para enviar comandos arbitrarios de energia.
 
 ## Nao Commitar
 

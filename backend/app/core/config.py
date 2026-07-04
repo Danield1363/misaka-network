@@ -45,6 +45,7 @@ class Settings(BaseSettings):
     VOICE_MAX_AUDIO_BYTES: int = 5_000_000
     VOICE_LANGUAGE: str = "pt"
     VOICE_MOCK_TRANSCRIPT: str = ""
+    VOICE_MOCK_REPEAT: bool = False
     OPENAI_API_KEY: str = ""
     OPENAI_TRANSCRIPTION_MODEL: str = "gpt-4o-mini-transcribe"
 

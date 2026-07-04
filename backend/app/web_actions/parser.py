@@ -83,6 +83,7 @@ def _extract_query(lower: str, entities: ParsedEntities) -> str:
         r"pesquisar\s+(?:no\s+\w+\s+)?(?:por\s+)?(.+?)(?:\s+no\s+|\s*$)",
         r"pesquise\s+(?:no\s+\w+\s+)?(?:por\s+)?(.+?)(?:\s+no\s+|\s*$)",
         r"procure\s+(?:no\s+\w+\s+)?(?:por\s+)?(.+?)(?:\s+no\s+|\s*$)",
+        r"procurar\s+(?:no\s+\w+\s+)?(?:por\s+)?(.+?)(?:\s+no\s+|\s*$)",
         r"busque\s+(?:no\s+\w+\s+)?(?:por\s+)?(.+?)(?:\s+no\s+|\s*$)",
         r"buscar\s+(?:no\s+\w+\s+)?(?:por\s+)?(.+?)(?:\s+no\s+|\s*$)",
     ]
