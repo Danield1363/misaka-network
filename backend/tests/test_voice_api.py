@@ -19,6 +19,11 @@ def client(monkeypatch):
     get_settings.cache_clear()
 
 
+def test_voice_status_endpoint(client):
+    response = client.get("/api/voice/status")
+    assert response.status_code == 200
+
+
 def test_voice_status_mock(client):
     response = client.get("/api/voice/status")
     assert response.status_code == 200

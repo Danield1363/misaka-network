@@ -161,3 +161,27 @@ Testes manuais com microfone, Vivaldi e clique/fala na UI: NOT RUN nesta rodada,
 | `pesquise wake on lan no google` | `client_action.open_url` para Google Search | Coberto por teste Python | PASS |
 | `abrir canal do alanzoka no youtube` | `client_action.open_url` para busca do YouTube com Alanzoka/canal | Coberto por teste Python | PASS |
 | Cloud Voice mock UI | Aviso mostra transcript fixo do mock | `VoiceStatus` expõe `mock_transcript`; dashboard mostra aviso no teste de transcricao e no rotulo do modo | PASS |
+
+## Hotfix Voice API Routes Registration - 2026-07-03
+
+| Teste | Resultado esperado | Resultado obtido | Status |
+| --- | --- | --- | --- |
+| `python -m py_compile backend/app/voice/routes.py` | Sem SyntaxError | OK | PASS |
+| `python -m py_compile backend/app/voice/service.py` | Sem SyntaxError | OK | PASS |
+| `python -m py_compile backend/app/voice/schemas.py` | Sem SyntaxError | OK | PASS |
+| `python -m py_compile backend/app/voice/errors.py` | Sem SyntaxError | OK | PASS |
+| `python -m py_compile backend/app/voice/providers/mock.py` | Sem SyntaxError | OK | PASS |
+| `python -m py_compile backend/app/voice/providers/openai_provider.py` | Sem SyntaxError | OK | PASS |
+| `python -m py_compile backend/app/api/router.py` | Sem SyntaxError | OK | PASS |
+| `routes.py` formatacao LF | Quebras de linha reais | LF em todos os arquivos voice; CRLF em router.py (sem impacto) | PASS |
+| `GET /api/voice/status` | 200 + VoiceStatus schema | `test_voice_status_endpoint` PASS | PASS |
+| `GET /api/voice/status` mock | Provider mock pronto | `test_voice_status_mock` PASS | PASS |
+| `POST /api/voice/transcribe` mock | Retorna transcript mock | `test_voice_transcribe_mock` PASS | PASS |
+| Transcribe one-shot | Segunda chamada same session retorna vazio | `test_voice_transcribe_mock_one_shot_by_session` PASS | PASS |
+| Transcribe repeat | `VOICE_MOCK_REPEAT=true` sempre retorna transcript | `test_voice_transcribe_mock_repeat_true` PASS | PASS |
+| Transcribe empty env | Fallback para `abrir youtube` | `test_voice_transcribe_mock_empty_env_uses_dev_fallback` PASS | PASS |
+| Transcribe sem arquivo | `audio_missing` | `test_voice_transcribe_without_file` PASS | PASS |
+| OpenAI sem chave | `voice_provider_not_configured` | `test_voice_transcribe_provider_unconfigured` PASS | PASS |
+| `pytest backend/tests/test_voice_api.py` | 8/8 passam | `8 passed in 1.77s` | PASS |
+| `router.py` inclui voice_router | `api_router.include_router(voice_router)` | Linha 59 confirmada | PASS |
+| `app/__init__.py` monta api_router com API_PREFIX | `app.include_router(api_router, prefix=settings.API_PREFIX)` | Linha 59 confirmada | PASS |
